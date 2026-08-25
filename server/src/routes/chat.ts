@@ -102,6 +102,24 @@ router.get('/:projectId/chat/sessions/:sessionId', (req: Request, res: Response)
   res.json(rows.map(toMessage));
 });
 
+// DELETE /api/projects/:projectId/chat/sessions/:sessionId — delete a session
+router.delete('/:projectId/chat/sessions/:sessionId', (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const sessionId = Number(req.params.sessionId);
+  const project = getProjectOr404(projectId, res);
+  if (!project) return;
+  const session = getDb()
+    .prepare('SELECT id FROM chat_sessions WHERE id = ? AND project_id = ?')
+    .get(sessionId, projectId);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found.' });
+    return;
+  }
+  // Messages cascade via FK ON DELETE CASCADE.
+  getDb().prepare('DELETE FROM chat_sessions WHERE id = ?').run(sessionId);
+  res.status(204).end();
+});
+
 // GET /api/projects/:projectId/chat — last 100 messages (legacy flat history)
 router.get('/:projectId/chat', (req: Request, res: Response) => {
   const projectId = Number(req.params.projectId);

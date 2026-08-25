@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import axios from 'axios';
 import { postChatMessage, getChatHistory, getChatSessionMessages, errMessage } from '@/api';
 import type { ChatMessage } from '@/api/types';
@@ -174,6 +174,8 @@ function splitContent(
 }
 
 onMounted(loadHistory);
+
+defineExpose({ messageCount: computed(() => messages.value.length) });
 </script>
 
 <template>

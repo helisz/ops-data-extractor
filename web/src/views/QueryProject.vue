@@ -6,17 +6,18 @@ import {
   createChatSession,
   getChatSessions,
   getChatSessionMessages,
+  deleteChatSession,
   errMessage,
 } from '@/api';
 import type { ProjectDetail, ChatMessage, ChatSession } from '@/api/types';
-import { AppButton, AppSpinner, AppAlert } from '@/components/ui';
+import { AppButton, AppSpinner, AppAlert, AppModal } from '@/components/ui';
 import DataTable from '@/components/DataTable.vue';
 import ChatPanel from '@/components/ChatPanel.vue';
-import { AppModal } from '@/components/ui';
 import {
   ChatBubbleLeftRightIcon,
   RectangleStackIcon,
   QuestionMarkCircleIcon,
+  TrashIcon,
 } from '@heroicons/vue/24/outline';
 
 type Mode = 'browse' | 'ask';
@@ -34,6 +35,10 @@ const helpOpen = ref(false);
 // Active chat session for the current conversation.
 const activeSessionId = ref<number | null>(null);
 const chatKey = ref(0);
+const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null);
+
+// New Chat is disabled while the current session has no messages.
+const canNewChat = computed(() => (chatPanelRef.value?.messageCount ?? 0) > 0);
 
 // Reuse the newest session if one exists, otherwise start a fresh one.
 async function ensureSession() {
@@ -105,6 +110,29 @@ function backToSessions() {
   sessionMessages.value = [];
 }
 
+// Delete a session from history; if it is the active one, fall back.
+const deletingSession = ref<number | null>(null);
+async function removeSession(session: ChatSession) {
+  if (deletingSession.value != null) return;
+  deletingSession.value = session.id;
+  try {
+    await deleteChatSession(projectId.value, session.id);
+    sessions.value = sessions.value.filter((s) => s.id !== session.id);
+    if (selectedSession.value?.id === session.id) {
+      backToSessions();
+    }
+    if (activeSessionId.value === session.id) {
+      activeSessionId.value = null;
+      await ensureSession();
+      chatKey.value += 1;
+    }
+  } catch (err) {
+    historyError.value = errMessage(err, 'Failed to delete session.');
+  } finally {
+    deletingSession.value = null;
+  }
+}
+
 function formatDate(iso: string): string {
   return new Date(iso.replace(' ', 'T') + 'Z').toLocaleString();
 }
@@ -171,37 +199,27 @@ onBeforeUnmount(() => {
       <div class="page-head">
         <button class="page-back" aria-label="Back to home" @click="router.push('/')">←</button>
         <h1 class="serif-headline qdetail__title">Query</h1>
-        <div class="qdetail__header-actions">
-          <button
-            v-if="mode === 'ask'"
-            class="qdetail__help"
-            aria-label="About Ask Mode"
-            @click="helpOpen = true"
-          >
-            <QuestionMarkCircleIcon class="qdetail__help-icon" />
-          </button>
-          <div class="qdetail__mode-switch" role="tablist" aria-label="Query mode">
-            <AppButton
-              variant="ghost"
-              class="qdetail__mode-btn"
-              :class="{ 'qdetail__mode-btn--active': mode === 'ask' }"
-              @click="mode = 'ask'"
-            >
-              <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
-              Ask Mode
-            </AppButton>
-            <AppButton
-              variant="ghost"
-              class="qdetail__mode-btn"
-              :class="{ 'qdetail__mode-btn--active': mode === 'browse' }"
-              @click="mode = 'browse'"
-            >
-              <RectangleStackIcon class="qdetail__mode-icon" />
-              Browse Data
-            </AppButton>
-          </div>
-        </div>
       </div>
+
+      <div class="qdetail__tabs" role="tablist" aria-label="Query mode">
+        <button
+          class="qdetail__tab"
+          :class="{ 'qdetail__tab--active': mode === 'ask' }"
+          @click="mode = 'ask'"
+        >
+          <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
+          Ask Mode
+        </button>
+        <button
+          class="qdetail__tab"
+          :class="{ 'qdetail__tab--active': mode === 'browse' }"
+          @click="mode = 'browse'"
+        >
+          <RectangleStackIcon class="qdetail__mode-icon" />
+          Browse Data
+        </button>
+      </div>
+
       <hr class="rule-thick" />
     </header>
 
@@ -226,7 +244,16 @@ onBeforeUnmount(() => {
           <p class="qdetail__head-desc">{{ project.description || 'No description' }}</p>
         </div>
         <div v-if="mode === 'ask'" class="qdetail__head-actions">
-          <AppButton variant="outline" @click="newChat">New Chat</AppButton>
+          <button
+            class="qdetail__help"
+            aria-label="About Ask Mode"
+            @click="helpOpen = true"
+          >
+            <QuestionMarkCircleIcon class="qdetail__help-icon" />
+          </button>
+          <AppButton variant="outline" :disabled="!canNewChat" @click="newChat">
+            New Chat
+          </AppButton>
           <AppButton variant="outline" @click="openHistory">History</AppButton>
         </div>
       </div>
@@ -243,6 +270,7 @@ onBeforeUnmount(() => {
         />
         <ChatPanel
           v-else
+          ref="chatPanelRef"
           :key="chatKey"
           :project-id="projectId"
           :project-name="project.name"
@@ -275,18 +303,26 @@ onBeforeUnmount(() => {
 
       <template v-else-if="!selectedSession">
         <div v-if="sessions.length" class="qdetail__history-sessions">
-          <button
-            v-for="s in sessions"
-            :key="s.id"
-            class="qdetail__history-session"
-            @click="openSession(s)"
-          >
-            <span class="serif-headline qdetail__history-session-time">
-              {{ formatDate(s.created_at) }}
-            </span>
-            <span class="meta">{{ s.message_count }} messages</span>
-            <span class="qdetail__history-session-arrow" aria-hidden="true">→</span>
-          </button>
+          <div v-for="s in sessions" :key="s.id" class="qdetail__history-session-row">
+            <button
+              class="qdetail__history-session"
+              @click="openSession(s)"
+            >
+              <span class="serif-headline qdetail__history-session-time">
+                {{ formatDate(s.created_at) }}
+              </span>
+              <span class="meta">{{ s.message_count }} messages</span>
+              <span class="qdetail__history-session-arrow" aria-hidden="true">→</span>
+            </button>
+            <button
+              class="qdetail__history-session-del"
+              :aria-label="`Delete session ${formatDate(s.created_at)}`"
+              :disabled="deletingSession === s.id"
+              @click.stop="removeSession(s)"
+            >
+              <TrashIcon class="qdetail__history-session-del-icon" />
+            </button>
+          </div>
         </div>
         <p v-else class="meta qdetail__history-empty">No chat sessions yet.</p>
       </template>
@@ -378,6 +414,11 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 
+  // Query title row sits flush against the tabs (this page only).
+  .page-head {
+    margin-bottom: 0;
+  }
+
   &__header {
     padding-top: 2.5rem;
     padding-bottom: 1.5rem;
@@ -388,11 +429,46 @@ onBeforeUnmount(() => {
     font-size: var(--text-5xl);
   }
 
-  &__header-actions {
+  &__tabs {
     display: flex;
+    justify-content: flex-end;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+  }
+
+  &__tab {
+    display: inline-flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-left: auto;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0.25rem 0.125rem;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+    transition:
+      color var(--duration-fast),
+      border-bottom-color var(--duration-fast);
+
+    &:hover {
+      color: var(--color-foreground);
+    }
+
+    &--active {
+      color: var(--color-foreground);
+      border-bottom-color: var(--color-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+      outline-offset: 2px;
+    }
   }
 
   &__error {
@@ -580,16 +656,26 @@ onBeforeUnmount(() => {
     border-top: var(--border-thin);
   }
 
+  &__history-session-row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: var(--border-hairline);
+
+    &:hover .qdetail__history-session-del {
+      opacity: 1;
+    }
+  }
+
   &__history-session {
     display: grid;
     grid-template-columns: 1fr auto auto;
     align-items: center;
     gap: 1rem;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     text-align: left;
     background: none;
     border: none;
-    border-bottom: var(--border-hairline);
     padding: 0.875rem 0.5rem;
     cursor: pointer;
     color: var(--color-foreground);
@@ -613,6 +699,40 @@ onBeforeUnmount(() => {
       outline: var(--focus-outline);
       outline-offset: -3px;
     }
+  }
+
+  &__history-session-del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-muted-foreground);
+    opacity: 0;
+    transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+
+    &:hover {
+      background: var(--color-foreground);
+      color: var(--color-accent-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+      outline-offset: -3px;
+      opacity: 1;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.4;
+    }
+  }
+
+  &__history-session-del-icon {
+    width: 1rem;
+    height: 1rem;
   }
 
   &__history-session-time {
@@ -685,26 +805,6 @@ onBeforeUnmount(() => {
   &__history-empty {
     padding: 2rem 0;
     text-align: center;
-  }
-
-  &__mode-switch {
-    display: inline-flex;
-    align-self: center;
-    border: var(--border-thin);
-  }
-
-  &__mode-btn {
-    border: none;
-    border-radius: 0;
-
-    & + & {
-      border-left: var(--border-thin);
-    }
-
-    &--active {
-      background: var(--color-foreground);
-      color: var(--color-accent-foreground);
-    }
   }
 
   &__mode-icon {

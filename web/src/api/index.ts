@@ -197,4 +197,8 @@ export async function getChatSessionMessages(
   return data;
 }
 
+export async function deleteChatSession(projectId: number, sessionId: number): Promise<void> {
+  await http.delete(`/projects/${projectId}/chat/sessions/${sessionId}`);
+}
+
 export { errMessage };
