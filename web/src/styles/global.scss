@@ -1,0 +1,280 @@
+// ============================================================
+// Minimalist Monochrome — Global Base Styles & Utilities
+// ============================================================
+
+// ---- Reset ----
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: auto;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.625; // leading-relaxed
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  border-radius: var(--radius);
+}
+
+a {
+  color: var(--color-foreground);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+}
+
+// ---- Focus (WCAG AAA, visible everywhere) ----
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+}
+
+input,
+select,
+textarea {
+  &:focus-visible {
+    outline: none;
+    border-color: var(--color-foreground);
+    border-width: 4px;
+  }
+}
+
+// ---- Typography utilities ----
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  font-weight: 500;
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  letter-spacing: 0.02em;
+}
+
+.serif-headline {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+}
+
+.tracking-widest {
+  letter-spacing: var(--tracking-widest);
+}
+
+.tracking-tight {
+  letter-spacing: var(--tracking-tight);
+}
+
+// ---- Layout container ----
+.container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding-inline: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding-inline: 3rem;
+  }
+}
+
+// ---- Hairline / black rules ----
+.rule-hairline {
+  border: 0;
+  border-top: var(--border-hairline);
+}
+
+.rule-thin {
+  border: 0;
+  border-top: var(--border-thin);
+}
+
+.rule-thick {
+  border: 0;
+  border-top: var(--border-thick);
+}
+
+.rule-ultra {
+  border: 0;
+  border-top: var(--border-ultra);
+}
+
+// ---- Textures (required for editorial depth, very low opacity) ----
+.texture-lines {
+  position: relative;
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 1px,
+      #000 1px,
+      #000 2px
+    );
+    background-size: 100% 4px;
+    opacity: 0.015;
+  }
+}
+
+.texture-grid {
+  position: relative;
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(#00000008 1px, transparent 1px),
+      linear-gradient(90deg, #00000008 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.015;
+  }
+}
+
+.texture-noise {
+  position: relative;
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.02;
+  }
+}
+
+// Inverted textures for dark (black bg) sections
+.texture-lines-inverted {
+  position: relative;
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 1px,
+      #fff 1px,
+      #fff 2px
+    );
+    background-size: 4px 100%;
+    opacity: 0.03;
+  }
+}
+
+// ---- Truncation helper ----
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ---- Skip link (visible when focused) ----
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 999;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-foreground);
+  color: var(--color-background);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  text-decoration: none;
+
+  &:focus-visible {
+    left: 0;
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-offset);
+  }
+}
+
+// ---- Table base (hand-rolled, monochrome) ----
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.625rem 0.75rem;
+    vertical-align: top;
+    border-bottom: var(--border-hairline);
+  }
+
+  th {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    font-weight: 500;
+    border-bottom: var(--border-thin);
+    white-space: nowrap;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+}
