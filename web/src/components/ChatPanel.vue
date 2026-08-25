@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue';
-import { postChatMessage, getChatHistory, errMessage } from '@/api';
+import { ref, watch, nextTick, onMounted } from 'vue';
+import { postChatMessage, getChatHistory, getChatSessionMessages, errMessage } from '@/api';
 import type { ChatMessage } from '@/api/types';
 import { AppButton, AppInput, AppCard, AppAlert, AppSpinner } from '@/components/ui';
 
-const props = defineProps<{ projectId: number; projectName: string }>();
+const props = withDefaults(
+  defineProps<{ projectId: number; projectName: string; sessionId?: number | null }>(),
+  { sessionId: null },
+);
 
 const messages = ref<ChatMessage[]>([]);
 const input = ref('');
@@ -24,12 +27,24 @@ async function scrollToBottom() {
 async function loadHistory() {
   error.value = null;
   try {
-    messages.value = await getChatHistory(props.projectId);
+    if (props.sessionId != null) {
+      messages.value = await getChatSessionMessages(props.projectId, props.sessionId);
+    } else {
+      messages.value = await getChatHistory(props.projectId);
+    }
     await scrollToBottom();
   } catch (err) {
     error.value = errMessage(err, 'Failed to load chat history.');
   }
 }
+
+watch(
+  () => props.sessionId,
+  () => {
+    messages.value = [];
+    loadHistory();
+  },
+);
 
 async function send() {
   const text = input.value.trim();
@@ -50,7 +65,7 @@ async function send() {
   await scrollToBottom();
 
   try {
-    const res = await postChatMessage(props.projectId, text);
+    const res = await postChatMessage(props.projectId, text, props.sessionId);
     const assistantMsg: ChatMessage = {
       id: Date.now() + 1,
       role: 'assistant',
@@ -95,7 +110,12 @@ async function copySql(sql: string, id: number) {
 }
 
 function copyMsgSql(msg: ChatMessage) {
-  if (msg.sql) copySql(msg.sql, msg.id);
+  if (msg.sql) copySql(cleanSql(msg.sql), msg.id);
+}
+
+// Strip markdown code fences from SQL text if present.
+function cleanSql(sql: string): string {
+  return sql.replace(/^```(?:sql)?\s*/i, '').replace(/\s*```$/, '').trim();
 }
 
 onMounted(loadHistory);
@@ -136,7 +156,7 @@ onMounted(loadHistory);
                 </AppButton>
               </div>
               <AppCard v-if="expandedSql.has(msg.id)" class="chat-message__sql-card">
-                <pre class="chat-message__sql-pre">{{ msg.sql }}</pre>
+                <pre class="chat-message__sql-pre">{{ cleanSql(msg.sql) }}</pre>
                 <div class="chat-message__sql-actions">
                   <AppButton variant="ghost" @click="copyMsgSql(msg)">
                     {{ copiedId === msg.id ? 'Copied ✓' : 'Copy' }}
@@ -338,6 +358,10 @@ onMounted(loadHistory);
   }
 
   &__sql-pre {
+    margin: 0;
+    padding: 0.75rem;
+    background: var(--color-muted);
+    border-left: var(--border-thin);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.6;

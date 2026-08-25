@@ -56,13 +56,33 @@ export function initDb(): Database.Database {
       content TEXT,
       sql_text TEXT,
       execution_meta TEXT,
+      session_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id);
     CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id, created_at);
   `);
+
+  // Migration: add session_id to existing chat_messages tables.
+  const chatCols = db.prepare('PRAGMA table_info(chat_messages)').all() as Array<{ name: string }>;
+  if (!chatCols.some((c) => c.name === 'session_id')) {
+    db.exec(
+      `ALTER TABLE chat_messages
+       ADD COLUMN session_id INTEGER REFERENCES chat_sessions(id) ON DELETE CASCADE`,
+    );
+    db.exec('CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id)');
+  }
 
   return db;
 }

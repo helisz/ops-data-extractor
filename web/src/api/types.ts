@@ -68,6 +68,12 @@ export interface ChatResponse {
   result: { columns: string[]; rows: Record<string, unknown>[] } | null;
 }
 
+export interface ChatSession {
+  id: number;
+  created_at: string;
+  message_count: number;
+}
+
 export interface UploadVersionResponse {
   version: Version;
   headersMatch: boolean;

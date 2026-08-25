@@ -5,8 +5,9 @@ const props = withDefaults(
   defineProps<{
     open: boolean;
     title?: string;
+    wide?: boolean;
   }>(),
-  { title: '' },
+  { title: '', wide: false },
 );
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>();
@@ -48,13 +49,16 @@ onBeforeUnmount(() => {
       <div
         ref="panelRef"
         class="app-modal__panel"
+        :class="{ 'app-modal__panel--wide': wide }"
         role="dialog"
         aria-modal="true"
         :aria-label="title || 'Dialog'"
         tabindex="-1"
       >
         <header class="app-modal__header">
-          <h2 class="app-modal__title serif-headline">{{ title }}</h2>
+          <h2 class="app-modal__title serif-headline">
+            <slot name="title">{{ title }}</slot>
+          </h2>
           <button class="app-modal__close" aria-label="Close dialog" @click="close">×</button>
         </header>
         <div class="app-modal__body">
@@ -94,6 +98,10 @@ onBeforeUnmount(() => {
     border: var(--border-thin);
     border-radius: var(--radius);
     outline: none;
+
+    &--wide {
+      max-width: 68rem;
+    }
   }
 
   &__header {

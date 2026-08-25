@@ -7,6 +7,7 @@ import type {
   Config,
   ChatMessage,
   ChatResponse,
+  ChatSession,
   UploadVersionResponse,
 } from './types';
 
@@ -157,13 +158,37 @@ export async function updateConfig(body: {
 export async function postChatMessage(
   projectId: number,
   message: string,
+  sessionId?: number | null,
 ): Promise<ChatResponse> {
-  const { data } = await http.post<ChatResponse>(`/projects/${projectId}/chat`, { message });
+  const { data } = await http.post<ChatResponse>(`/projects/${projectId}/chat`, {
+    message,
+    sessionId: sessionId ?? null,
+  });
   return data;
 }
 
 export async function getChatHistory(projectId: number): Promise<ChatMessage[]> {
   const { data } = await http.get<ChatMessage[]>(`/projects/${projectId}/chat`);
+  return data;
+}
+
+export async function createChatSession(projectId: number): Promise<ChatSession> {
+  const { data } = await http.post<ChatSession>(`/projects/${projectId}/chat/sessions`);
+  return data;
+}
+
+export async function getChatSessions(projectId: number): Promise<ChatSession[]> {
+  const { data } = await http.get<ChatSession[]>(`/projects/${projectId}/chat/sessions`);
+  return data;
+}
+
+export async function getChatSessionMessages(
+  projectId: number,
+  sessionId: number,
+): Promise<ChatMessage[]> {
+  const { data } = await http.get<ChatMessage[]>(
+    `/projects/${projectId}/chat/sessions/${sessionId}`,
+  );
   return data;
 }
 

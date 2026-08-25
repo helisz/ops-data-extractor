@@ -37,7 +37,70 @@ function toMessage(row: ChatMessageRow) {
   };
 }
 
-// GET /api/projects/:projectId/chat — last 100 messages
+function getProjectOr404(projectId: number, res: Response) {
+  const project = getProject(projectId);
+  if (!project) {
+    res.status(404).json({ error: 'Project not found.' });
+    return null;
+  }
+  return project;
+}
+
+// POST /api/projects/:projectId/chat/sessions — start a new chat session
+router.post('/:projectId/chat/sessions', (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const project = getProjectOr404(projectId, res);
+  if (!project) return;
+  const result = getDb()
+    .prepare('INSERT INTO chat_sessions (project_id) VALUES (?)')
+    .run(projectId);
+  const row = getDb()
+    .prepare('SELECT id, created_at FROM chat_sessions WHERE id = ?')
+    .get(result.lastInsertRowid) as { id: number; created_at: string };
+  res.status(201).json(row);
+});
+
+// GET /api/projects/:projectId/chat/sessions — list chat sessions (newest first)
+router.get('/:projectId/chat/sessions', (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const project = getProjectOr404(projectId, res);
+  if (!project) return;
+  const rows = getDb()
+    .prepare(
+      `SELECT s.id, s.created_at, COUNT(m.id) AS message_count
+       FROM chat_sessions s
+       LEFT JOIN chat_messages m ON m.session_id = s.id
+       WHERE s.project_id = ?
+       GROUP BY s.id
+       ORDER BY s.created_at DESC, s.id DESC`,
+    )
+    .all(projectId) as Array<{ id: number; created_at: string; message_count: number }>;
+  res.json(rows);
+});
+
+// GET /api/projects/:projectId/chat/sessions/:sessionId — messages of one session
+router.get('/:projectId/chat/sessions/:sessionId', (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const sessionId = Number(req.params.sessionId);
+  const project = getProjectOr404(projectId, res);
+  if (!project) return;
+  const session = getDb()
+    .prepare('SELECT id FROM chat_sessions WHERE id = ? AND project_id = ?')
+    .get(sessionId, projectId);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found.' });
+    return;
+  }
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM chat_messages WHERE session_id = ?
+       ORDER BY created_at ASC, id ASC`,
+    )
+    .all(sessionId) as ChatMessageRow[];
+  res.json(rows.map(toMessage));
+});
+
+// GET /api/projects/:projectId/chat — last 100 messages (legacy flat history)
 router.get('/:projectId/chat', (req: Request, res: Response) => {
   const projectId = Number(req.params.projectId);
   const project = getProject(projectId);
@@ -58,15 +121,23 @@ router.get('/:projectId/chat', (req: Request, res: Response) => {
 router.post('/:projectId/chat', async (req: Request, res: Response) => {
   const projectId = Number(req.params.projectId);
   const message = String(req.body?.message ?? '').trim();
+  const sessionId = req.body?.sessionId ? Number(req.body.sessionId) : null;
   if (!message) {
     res.status(400).json({ error: 'Message is required.' });
     return;
   }
 
-  const project = getProject(projectId);
-  if (!project) {
-    res.status(404).json({ error: 'Project not found.' });
-    return;
+  const project = getProjectOr404(projectId, res);
+  if (!project) return;
+  // Validate the session belongs to this project when provided.
+  if (sessionId != null) {
+    const session = getDb()
+      .prepare('SELECT id FROM chat_sessions WHERE id = ? AND project_id = ?')
+      .get(sessionId, projectId);
+    if (!session) {
+      res.status(400).json({ error: 'Invalid chat session.' });
+      return;
+    }
   }
   const active = getActiveVersion(projectId);
   const mappings = getHeaderMapping(projectId);
@@ -84,11 +155,9 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
   const tableName = dataTableName(projectId, active.version_number);
 
   // Persist the user message.
-  db.prepare('INSERT INTO chat_messages (project_id, role, content) VALUES (?, ?, ?)').run(
-    projectId,
-    'user',
-    message,
-  );
+  db.prepare(
+    'INSERT INTO chat_messages (project_id, role, content, session_id) VALUES (?, ?, ?, ?)',
+  ).run(projectId, 'user', message, sessionId);
 
   let assistantText = '';
   let sql: string | null = null;
@@ -127,22 +196,32 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
 
   // Persist the assistant message.
   db.prepare(
-    'INSERT INTO chat_messages (project_id, role, content, sql_text, execution_meta) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO chat_messages (project_id, role, content, sql_text, execution_meta, session_id) VALUES (?, ?, ?, ?, ?, ?)',
   ).run(
     projectId,
     'assistant',
     assistantText,
     sql,
     JSON.stringify(execution),
+    sessionId,
   );
 
-  // Prune to the latest 100 messages for this project.
-  db.prepare(
-    `DELETE FROM chat_messages WHERE project_id = ? AND id NOT IN (
-       SELECT id FROM chat_messages WHERE project_id = ?
-       ORDER BY created_at DESC, id DESC LIMIT 100
-     )`,
-  ).run(projectId, projectId);
+  // Prune to the latest 100 messages for this session (or project when no session).
+  if (sessionId != null) {
+    db.prepare(
+      `DELETE FROM chat_messages WHERE session_id = ? AND id NOT IN (
+         SELECT id FROM chat_messages WHERE session_id = ?
+         ORDER BY created_at DESC, id DESC LIMIT 100
+       )`,
+    ).run(sessionId, sessionId);
+  } else {
+    db.prepare(
+      `DELETE FROM chat_messages WHERE project_id = ? AND session_id IS NULL AND id NOT IN (
+         SELECT id FROM chat_messages WHERE project_id = ? AND session_id IS NULL
+         ORDER BY created_at DESC, id DESC LIMIT 100
+       )`,
+    ).run(projectId, projectId);
+  }
 
   res.json({
     assistantText,
