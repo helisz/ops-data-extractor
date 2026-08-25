@@ -107,7 +107,8 @@ onMounted(loadHistory);
       <p class="label chat-panel__kicker">Ask Mode — {{ projectName }}</p>
       <p class="meta chat-panel__hint">
         Ask a natural-language question; the LLM converts it to SQL, executes it against
-        the active version, and shows the result.
+        the active version, and shows the result. Press Enter to send; Ctrl/Alt+Enter
+        inserts a new line.
       </p>
     </header>
 
@@ -197,7 +198,11 @@ onMounted(loadHistory);
       </div>
     </div>
 
-    <form class="chat-panel__input" @submit.prevent="send">
+    <form
+      class="chat-panel__input"
+      @submit.prevent="send"
+      @keydown.enter.exact.prevent="send"
+    >
       <AppInput
         v-model="input"
         textarea

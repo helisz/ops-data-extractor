@@ -123,7 +123,9 @@ export function validateAndExecuteSql(
   tableName: string,
   headers: ColumnMapping[],
 ): ExecutionResult | ExecutionFailure {
-  const cleaned = sql.trim();
+  // LLMs often wrap the statement with a trailing semicolon; strip it before
+  // validation so a single SELECT still passes the single-statement check.
+  const cleaned = sql.trim().replace(/;+\s*$/, '');
   if (!/^SELECT\b/i.test(cleaned)) {
     return { error: 'The generated SQL is not a SELECT statement.' };
   }
