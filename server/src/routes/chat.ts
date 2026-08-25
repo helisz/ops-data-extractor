@@ -23,6 +23,7 @@ interface ChatMessageRow {
   content: string | null;
   sql_text: string | null;
   execution_meta: string | null;
+  result_data: string | null;
   created_at: string;
 }
 
@@ -33,6 +34,7 @@ function toMessage(row: ChatMessageRow) {
     content: row.content,
     sql: row.sql_text,
     execution: row.execution_meta ? JSON.parse(row.execution_meta) : null,
+    result: row.result_data ? JSON.parse(row.result_data) : null,
     created_at: row.created_at,
   };
 }
@@ -194,15 +196,16 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
     };
   }
 
-  // Persist the assistant message.
+  // Persist the assistant message (including query result for history).
   db.prepare(
-    'INSERT INTO chat_messages (project_id, role, content, sql_text, execution_meta, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO chat_messages (project_id, role, content, sql_text, execution_meta, result_data, session_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
   ).run(
     projectId,
     'assistant',
     assistantText,
     sql,
     JSON.stringify(execution),
+    result ? JSON.stringify({ columns: result.columns, rows: result.rows }) : null,
     sessionId,
   );
 

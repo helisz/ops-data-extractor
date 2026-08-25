@@ -159,11 +159,16 @@ export async function postChatMessage(
   projectId: number,
   message: string,
   sessionId?: number | null,
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
-  const { data } = await http.post<ChatResponse>(`/projects/${projectId}/chat`, {
-    message,
-    sessionId: sessionId ?? null,
-  });
+  const { data } = await http.post<ChatResponse>(
+    `/projects/${projectId}/chat`,
+    {
+      message,
+      sessionId: sessionId ?? null,
+    },
+    { signal },
+  );
   return data;
 }
 

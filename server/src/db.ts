@@ -56,6 +56,7 @@ export function initDb(): Database.Database {
       content TEXT,
       sql_text TEXT,
       execution_meta TEXT,
+      result_data TEXT,
       session_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -82,6 +83,10 @@ export function initDb(): Database.Database {
        ADD COLUMN session_id INTEGER REFERENCES chat_sessions(id) ON DELETE CASCADE`,
     );
     db.exec('CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id)');
+  }
+  // Migration: add result_data to persist query results in history.
+  if (!chatCols.some((c) => c.name === 'result_data')) {
+    db.exec('ALTER TABLE chat_messages ADD COLUMN result_data TEXT');
   }
 
   return db;

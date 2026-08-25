@@ -109,14 +109,6 @@ function formatDate(iso: string): string {
   return new Date(iso.replace(' ', 'T') + 'Z').toLocaleString();
 }
 
-// Session detail split into user inputs (left) and executed SQL (right).
-const sessionUserMessages = computed(() =>
-  sessionMessages.value.filter((m) => m.role === 'user'),
-);
-const sessionSqlMessages = computed(
-  () => sessionMessages.value.filter((m) => m.role === 'assistant' && m.sql),
-);
-
 async function load() {
   loading.value = true;
   error.value = null;
@@ -278,19 +270,49 @@ onMounted(load);
         </div>
         <AppAlert v-else-if="sessionError" variant="error">{{ sessionError }}</AppAlert>
 
-        <div v-else class="qdetail__history">
-          <div class="qdetail__history-col">
-            <p class="label qdetail__history-col-title">Your Input</p>
-            <div v-for="m in sessionUserMessages" :key="m.id" class="qdetail__history-item">
-              <p class="qdetail__history-text">{{ m.content }}</p>
-              <span class="meta qdetail__history-time">{{ formatDate(m.created_at) }}</span>
-            </div>
-          </div>
-          <div class="qdetail__history-col">
-            <p class="label qdetail__history-col-title">Executed SQL</p>
-            <div v-for="m in sessionSqlMessages" :key="m.id" class="qdetail__history-item">
-              <pre class="qdetail__history-sql">{{ m.sql }}</pre>
-              <span class="meta qdetail__history-time">{{ formatDate(m.created_at) }}</span>
+        <div v-else class="qdetail__history-detail">
+          <div
+            v-for="m in sessionMessages"
+            :key="m.id"
+            class="qdetail__history-msg"
+            :class="m.role === 'user'
+              ? 'qdetail__history-msg--user'
+              : 'qdetail__history-msg--assistant'"
+          >
+            <div class="qdetail__history-bubble">
+              <template v-if="m.role === 'user'">
+                <p class="qdetail__history-text">{{ m.content }}</p>
+              </template>
+              <template v-else>
+                <p v-if="m.content" class="qdetail__history-text">{{ m.content }}</p>
+                <pre v-if="m.sql" class="qdetail__history-sql">{{ m.sql }}</pre>
+                <p v-if="m.execution" class="meta qdetail__history-exec">
+                  status {{ m.execution.status }} ·
+                  {{ m.execution.rowCount ?? 0 }} rows ·
+                  {{ m.execution.durationMs ?? 0 }} ms
+                </p>
+                <div
+                  v-if="m.result && m.result.rows.length"
+                  class="qdetail__history-result"
+                >
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th v-for="col in m.result.columns" :key="col">{{ col }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, i) in m.result.rows.slice(0, 100)" :key="i">
+                        <td v-for="col in m.result.columns" :key="col">
+                          <span class="ellipsis" :title="String(row[col] ?? '')">
+                            {{ row[col] ?? '' }}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -304,6 +326,7 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   flex: 1;
+  height: 0;
   min-height: 0;
   overflow: hidden;
 
@@ -326,6 +349,7 @@ onMounted(load);
 
   &__body {
     flex: 1;
+    height: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -340,8 +364,11 @@ onMounted(load);
 
   &__content {
     flex: 1;
+    height: 0;
     min-height: 0;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   &__head {
@@ -430,13 +457,56 @@ onMounted(load);
     line-height: 1.625;
   }
 
-  &__history {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
+  &__history-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
     max-height: 60vh;
     overflow: auto;
-    border-top: var(--border-thin);
+    padding-top: 1rem;
+  }
+
+  &__history-msg {
+    display: flex;
+    width: 100%;
+
+    &--user {
+      justify-content: flex-end;
+
+      .qdetail__history-bubble {
+        background: var(--color-foreground);
+        color: var(--color-accent-foreground);
+        border: 2px solid var(--color-foreground);
+      }
+    }
+
+    &--assistant {
+      justify-content: flex-start;
+
+      .qdetail__history-bubble {
+        background: var(--color-card);
+        border: var(--border-thin);
+      }
+    }
+  }
+
+  &__history-bubble {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    max-width: 75%;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+  }
+
+  &__history-exec {
+    font-style: italic;
+  }
+
+  &__history-result {
+    overflow-x: auto;
+    border-top: var(--border-hairline);
+    padding-top: 0.5rem;
   }
 
   &__history-title-suffix {
@@ -512,30 +582,6 @@ onMounted(load);
     border-bottom: var(--border-thin);
   }
 
-  &__history-col {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    min-width: 0;
-    padding-top: 0.75rem;
-  }
-
-  &__history-col-title {
-    color: var(--color-muted-foreground);
-  }
-
-  &__history-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-    padding: 0.875rem 0.25rem;
-    border-bottom: var(--border-hairline);
-  }
-
-  &__history-time {
-    font-style: italic;
-  }
-
   &__history-text {
     font-size: var(--text-base);
     line-height: 1.625;
@@ -589,7 +635,13 @@ onMounted(load);
   &__browse,
   &__ask {
     min-width: 0;
-    height: 100%;
+    flex: 1;
+    height: 0;
+    min-height: 0;
+  }
+
+  &__browse {
+    overflow: auto;
   }
 }
 </style>

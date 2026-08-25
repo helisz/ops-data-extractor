@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from 'vue';
+import axios from 'axios';
 import { postChatMessage, getChatHistory, getChatSessionMessages, errMessage } from '@/api';
 import type { ChatMessage } from '@/api/types';
-import { AppButton, AppInput, AppCard, AppAlert, AppSpinner } from '@/components/ui';
+import { AppButton, AppAlert, AppSpinner } from '@/components/ui';
 
 const props = withDefaults(
   defineProps<{ projectId: number; projectName: string; sessionId?: number | null }>(),
@@ -14,8 +15,50 @@ const input = ref('');
 const sending = ref(false);
 const error = ref<string | null>(null);
 const scrollEl = ref<HTMLElement | null>(null);
-const expandedSql = ref<Set<number>>(new Set());
-const copiedId = ref<number | null>(null);
+let abortController: AbortController | null = null;
+
+// Custom textarea resize: drag the top border upward (max 300px).
+const MAX_INPUT_HEIGHT = 300;
+const inputHeight = ref(0); // 0 = auto height from rows
+let resizeDrag: { y: number; height: number } | null = null;
+
+function currentInputHeight(): number {
+  return inputHeight.value > 0 ? inputHeight.value : 60;
+}
+
+function startResize(event: MouseEvent) {
+  resizeDrag = { y: event.clientY, height: currentInputHeight() };
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup', endResize);
+  event.preventDefault();
+}
+
+function onResizeMove(event: MouseEvent) {
+  if (!resizeDrag) return;
+  const delta = resizeDrag.y - event.clientY; // dragging up grows the box
+  inputHeight.value = Math.min(
+    MAX_INPUT_HEIGHT,
+    Math.max(40, resizeDrag.height + delta),
+  );
+}
+
+function endResize() {
+  resizeDrag = null;
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', endResize);
+}
+
+// Stop the in-flight LLM request.
+function stop() {
+  abortController?.abort();
+}
+
+function onSendClick(event: MouseEvent) {
+  if (sending.value) {
+    event.preventDefault();
+    stop();
+  }
+}
 
 async function scrollToBottom() {
   await nextTick();
@@ -51,6 +94,7 @@ async function send() {
   if (!text || sending.value) return;
   sending.value = true;
   error.value = null;
+  abortController = new AbortController();
 
   const userMsg: ChatMessage = {
     id: Date.now(),
@@ -65,7 +109,12 @@ async function send() {
   await scrollToBottom();
 
   try {
-    const res = await postChatMessage(props.projectId, text, props.sessionId);
+    const res = await postChatMessage(
+      props.projectId,
+      text,
+      props.sessionId,
+      abortController.signal,
+    );
     const assistantMsg: ChatMessage = {
       id: Date.now() + 1,
       role: 'assistant',
@@ -78,9 +127,14 @@ async function send() {
     messages.value = [...messages.value, assistantMsg];
     await scrollToBottom();
   } catch (err) {
-    error.value = errMessage(err, 'Failed to get a response.');
-    messages.value = messages.value.filter((m) => m.id !== userMsg.id);
+    if (axios.isCancel(err)) {
+      error.value = 'Stopped.';
+    } else {
+      error.value = errMessage(err, 'Failed to get a response.');
+      messages.value = messages.value.filter((m) => m.id !== userMsg.id);
+    }
   } finally {
+    abortController = null;
     sending.value = false;
   }
 }
@@ -90,32 +144,26 @@ function formatDate(iso: string): string {
   return d.toLocaleString();
 }
 
-function toggleSql(id: number) {
-  const next = new Set(expandedSql.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  expandedSql.value = next;
-}
-
-async function copySql(sql: string, id: number) {
-  try {
-    await navigator.clipboard.writeText(sql);
-    copiedId.value = id;
-    setTimeout(() => {
-      if (copiedId.value === id) copiedId.value = null;
-    }, 1500);
-  } catch {
-    /* clipboard unavailable */
+// Split a message body into plain text and fenced code blocks.
+function splitContent(
+  content: string,
+): Array<{ type: 'text' | 'code'; text: string }> {
+  const parts: Array<{ type: 'text' | 'code'; text: string }> = [];
+  const regex = /```(?:sql)?\s*([\s\S]*?)```/gi;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(content)) !== null) {
+    if (m.index > last) {
+      parts.push({ type: 'text', text: content.slice(last, m.index) });
+    }
+    parts.push({ type: 'code', text: m[1].trim() });
+    last = m.index + m[0].length;
   }
-}
-
-function copyMsgSql(msg: ChatMessage) {
-  if (msg.sql) copySql(cleanSql(msg.sql), msg.id);
-}
-
-// Strip markdown code fences from SQL text if present.
-function cleanSql(sql: string): string {
-  return sql.replace(/^```(?:sql)?\s*/i, '').replace(/\s*```$/, '').trim();
+  if (last < content.length) {
+    parts.push({ type: 'text', text: content.slice(last) });
+  }
+  if (parts.length === 0) parts.push({ type: 'text', text: content });
+  return parts;
 }
 
 onMounted(loadHistory);
@@ -145,25 +193,17 @@ onMounted(loadHistory);
             <p class="chat-message__text">{{ msg.content }}</p>
           </template>
           <template v-else>
-            <p v-if="msg.content" class="chat-message__text chat-message__text--serif">
-              {{ msg.content }}
-            </p>
-            <div v-if="msg.sql" class="chat-message__sql">
-              <div class="chat-message__sql-head">
-                <span class="label">Generated SQL</span>
-                <AppButton variant="ghost" @click="toggleSql(msg.id)">
-                  {{ expandedSql.has(msg.id) ? 'Hide' : 'Show' }}
-                </AppButton>
-              </div>
-              <AppCard v-if="expandedSql.has(msg.id)" class="chat-message__sql-card">
-                <pre class="chat-message__sql-pre">{{ cleanSql(msg.sql) }}</pre>
-                <div class="chat-message__sql-actions">
-                  <AppButton variant="ghost" @click="copyMsgSql(msg)">
-                    {{ copiedId === msg.id ? 'Copied ✓' : 'Copy' }}
-                  </AppButton>
-                </div>
-              </AppCard>
-            </div>
+            <template v-if="msg.content">
+              <template v-for="(part, i) in splitContent(msg.content)" :key="i">
+                <p
+                  v-if="part.type === 'text'"
+                  class="chat-message__text chat-message__text--serif"
+                >
+                  {{ part.text }}
+                </p>
+                <pre v-else class="chat-message__sql-pre">{{ part.text }}</pre>
+              </template>
+            </template>
 
             <div v-if="msg.execution" class="chat-message__exec">
               <AppAlert v-if="msg.execution.status === 'error'" variant="error" title="Execution Failed">
@@ -213,15 +253,23 @@ onMounted(loadHistory);
     <form
       class="chat-panel__input"
       @submit.prevent="send"
-      @keydown.enter.exact.prevent="send"
     >
-      <AppInput
+      <div
+        class="chat-panel__resize"
+        title="Drag up to resize"
+        @mousedown="startResize"
+      ></div>
+      <textarea
         v-model="input"
-        textarea
+        class="chat-panel__textarea"
         :rows="2"
+        :style="inputHeight > 0 ? { height: inputHeight + 'px' } : undefined"
         placeholder="Ask about the data…"
-      />
-      <AppButton type="submit" :loading="sending">Send</AppButton>
+        @keydown.enter.exact.prevent="send"
+      ></textarea>
+      <AppButton type="submit" @click="onSendClick">
+        {{ sending ? 'STOP' : 'Send' }}
+      </AppButton>
     </form>
   </div>
 </template>
@@ -252,13 +300,12 @@ onMounted(loadHistory);
 
   &__scroll {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
     padding: 1rem 0.25rem;
-    min-height: 20rem;
-    max-height: 60vh;
     border-top: var(--border-hairline);
     border-bottom: var(--border-hairline);
   }
@@ -266,8 +313,10 @@ onMounted(loadHistory);
   &__empty {
     display: flex;
     flex-direction: column;
+    flex: 1;
     gap: 0.5rem;
     align-items: center;
+    justify-content: center;
     text-align: center;
     padding: 2rem 1rem;
 
@@ -281,6 +330,49 @@ onMounted(loadHistory);
     grid-template-columns: 1fr auto;
     gap: 0.75rem;
     align-items: end;
+  }
+
+  &__resize {
+    grid-column: 1 / -1;
+    height: 8px;
+    cursor: ns-resize;
+    border-top: var(--border-hairline);
+    transition: border-color var(--duration-fast);
+
+    &:hover {
+      border-top-color: var(--color-foreground);
+    }
+
+    &:active {
+      border-top-color: var(--color-foreground);
+    }
+  }
+
+  &__textarea {
+    resize: none;
+    width: 100%;
+    min-height: 44px;
+    max-height: 300px;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    border: var(--border-medium);
+    border-radius: var(--radius);
+    padding: 0.625rem 0.75rem;
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    transition: border-width var(--duration-fast) var(--ease-instant);
+
+    &::placeholder {
+      color: var(--color-muted-foreground);
+      font-style: italic;
+      opacity: 1;
+    }
+
+    &:focus {
+      border-width: 4px;
+      outline: none;
+    }
   }
 }
 
@@ -332,31 +424,6 @@ onMounted(loadHistory);
     padding-inline: 0.25rem;
   }
 
-  &__sql {
-    margin-top: 0.875rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  &__sql-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-
-    .label {
-      color: var(--color-muted-foreground);
-    }
-  }
-
-  &__sql-card {
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
   &__sql-pre {
     margin: 0;
     padding: 0.75rem;
@@ -368,11 +435,6 @@ onMounted(loadHistory);
     white-space: pre-wrap;
     word-break: break-word;
     overflow-x: auto;
-  }
-
-  &__sql-actions {
-    display: flex;
-    justify-content: flex-end;
   }
 
   &__exec {
