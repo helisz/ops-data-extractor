@@ -16,10 +16,22 @@ const router = createRouter({
       meta: { title: 'Data Management' },
     },
     {
+      path: '/manage/:id',
+      name: 'project-detail',
+      component: () => import('@/views/ProjectDetail.vue'),
+      meta: { title: 'Project Detail' },
+    },
+    {
       path: '/query',
       name: 'query',
       component: () => import('@/views/Query.vue'),
       meta: { title: 'Data Query' },
+    },
+    {
+      path: '/query/:id',
+      name: 'query-project',
+      component: () => import('@/views/QueryProject.vue'),
+      meta: { title: 'Project Query' },
     },
     {
       path: '/config',

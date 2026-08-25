@@ -1,37 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { getProjects, errMessage } from '@/api';
 import type { Project } from '@/api/types';
-import { AppButton, AppSpinner, AppAlert } from '@/components/ui';
-import DataTable from '@/components/DataTable.vue';
-import ChatPanel from '@/components/ChatPanel.vue';
+import { AppSpinner, AppAlert } from '@/components/ui';
 
-type Mode = 'browse' | 'ask';
+const router = useRouter();
 
 const projects = ref<Project[]>([]);
-const selectedId = ref<number | null>(null);
-const selectedProject = ref<Project | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const mode = ref<Mode>('browse');
 
+// Newest projects first
 const sortedProjects = computed(() => [...projects.value].sort((a, b) => b.id - a.id));
-const activeProject = computed(
-  () => selectedProject.value ?? projects.value.find((p) => p.id === selectedId.value) ?? null,
-);
 
 async function refreshProjects() {
   loading.value = true;
   error.value = null;
   try {
     projects.value = await getProjects();
-    if (selectedId.value == null && projects.value.length > 0) {
-      selectedId.value = projects.value[0].id;
-      selectedProject.value = projects.value[0];
-    } else if (selectedId.value != null) {
-      selectedProject.value =
-        projects.value.find((p) => p.id === selectedId.value) ?? null;
-    }
   } catch (err) {
     error.value = errMessage(err, 'Failed to load projects.');
   } finally {
@@ -39,9 +26,12 @@ async function refreshProjects() {
   }
 }
 
-function selectProject(id: number) {
-  selectedId.value = id;
-  selectedProject.value = projects.value.find((p) => p.id === id) ?? null;
+function openProject(id: number) {
+  router.push(`/query/${id}`);
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso.replace(' ', 'T') + 'Z').toLocaleDateString();
 }
 
 onMounted(refreshProjects);
@@ -50,80 +40,42 @@ onMounted(refreshProjects);
 <template>
   <div class="query">
     <header class="query__header container">
-      <p class="label query__kicker">Data Query</p>
-      <h1 class="serif-headline query__title">Query</h1>
+      <div class="page-head">
+        <button class="page-back" aria-label="Back to home" @click="router.push('/')">←</button>
+        <h1 class="serif-headline query__title">Query</h1>
+      </div>
       <hr class="rule-thick" />
     </header>
 
-    <div class="query__layout container">
-      <aside class="query__list">
+    <div class="query__body container">
+      <div class="query__list-head">
         <span class="label">Projects</span>
-        <AppAlert v-if="error" variant="error" class="query__error">{{ error }}</AppAlert>
-        <div v-if="loading" class="query__loading">
-          <AppSpinner label="Loading projects…" />
-        </div>
-        <ul v-else class="query__project-list">
-          <li v-for="p in sortedProjects" :key="p.id">
-            <button
-              class="query__project-item"
-              :class="{ 'query__project-item--active': selectedId === p.id }"
-              @click="selectProject(p.id)"
-            >
-              <span class="serif-headline">{{ p.name }}</span>
-              <span class="meta">
-                {{ p.activeVersion ? `v${p.activeVersion}` : 'no data' }}
-              </span>
-            </button>
-          </li>
-        </ul>
-        <p v-if="!loading && sortedProjects.length === 0" class="meta query__empty">
-          No projects yet. Create one in Data Management.
-        </p>
-      </aside>
+      </div>
 
-      <section class="query__panel">
-        <div v-if="!activeProject" class="query__placeholder">
-          <p class="serif-headline">Select a project</p>
-          <p class="meta">Choose a project from the list to browse or ask about its data.</p>
-        </div>
+      <AppAlert v-if="error" variant="error" class="query__error">{{ error }}</AppAlert>
 
-        <template v-else>
-          <div class="query__panel-head">
-            <div>
-              <h2 class="serif-headline query__panel-title">{{ activeProject.name }}</h2>
-              <p class="meta query__panel-meta">
-                {{ activeProject.activeVersion ? `Active version v${activeProject.activeVersion}` : 'No data uploaded yet' }}
-              </p>
-            </div>
-            <div class="query__mode-switch" role="tablist" aria-label="Query mode">
-              <AppButton
-                variant="ghost"
-                class="query__mode-btn"
-                :class="{ 'query__mode-btn--active': mode === 'browse' }"
-                @click="mode = 'browse'"
-              >
-                Browse
-              </AppButton>
-              <AppButton
-                variant="ghost"
-                class="query__mode-btn"
-                :class="{ 'query__mode-btn--active': mode === 'ask' }"
-                @click="mode = 'ask'"
-              >
-                Ask
-              </AppButton>
-            </div>
-          </div>
+      <div v-if="loading" class="query__loading">
+        <AppSpinner label="Loading projects…" />
+      </div>
 
-          <div v-if="mode === 'browse'" class="query__browse">
-            <DataTable :project-id="activeProject.id" />
-          </div>
+      <ul v-else class="query-cards">
+        <li v-for="(p, i) in sortedProjects" :key="p.id">
+          <button class="query-card" @click="openProject(p.id)">
+            <span class="label query-card__index">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="serif-headline query-card__title">{{ p.name }}</span>
+            <span class="query-card__desc">{{ p.description || 'No description' }}</span>
+            <span class="query-card__meta meta">
+              {{ p.activeVersion ? `version${p.activeVersion}` : 'no data' }} ·
+              {{ formatDate(p.created_at) }}
+            </span>
+            <span class="query-card__cta">Open <span class="arrow" aria-hidden="true">→</span></span>
+          </button>
+        </li>
+      </ul>
 
-          <div v-else class="query__ask">
-            <ChatPanel :project-id="activeProject.id" :project-name="activeProject.name" />
-          </div>
-        </template>
-      </section>
+      <p v-if="!loading && sortedProjects.length === 0" class="meta query__empty">
+        No projects yet. Create one in Data Management.
+      </p>
     </div>
   </div>
 </template>
@@ -135,171 +87,123 @@ onMounted(refreshProjects);
     padding-bottom: 1.5rem;
   }
 
-  &__kicker {
-    color: var(--color-muted-foreground);
-    margin-bottom: 0.75rem;
-  }
-
   &__title {
     font-size: var(--text-5xl);
-    margin-bottom: 1.25rem;
   }
 
-  &__layout {
-    display: grid;
-    grid-template-columns: 20rem 1fr;
-    gap: 2.5rem;
+  &__body {
     padding-bottom: 4rem;
-    align-items: start;
   }
 
   &__error {
-    margin-top: 0.75rem;
+    margin-top: 1rem;
   }
 
   &__loading {
-    padding: 1.5rem 0;
+    padding: 2rem 0;
   }
 
   &__empty {
     padding: 1.5rem 0;
   }
-
-  &__placeholder {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 3rem 0;
-
-    p.serif-headline {
-      font-size: var(--text-2xl);
-    }
-  }
 }
 
-.query__list {
-  border-right: var(--border-thin);
-  padding-right: 1.5rem;
+.query__list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: var(--border-thin);
+}
+
+.query-cards {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 2rem;
+  padding-top: 1rem;
+}
+
+.query-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-
-  > .label {
-    padding-bottom: 0.75rem;
-    border-bottom: var(--border-thin);
-  }
-}
-
-.query__project-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-
-  li {
-    border-bottom: var(--border-hairline);
-  }
-}
-
-.query__project-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
   width: 100%;
   text-align: left;
-  background: none;
-  border: none;
-  padding: 0.875rem 0.5rem;
+  background: var(--color-card);
+  border: var(--border-thin);
+  padding: 1.5rem;
   cursor: pointer;
-  min-height: 44px;
-  transition: background-color var(--duration-fast), color var(--duration-fast);
+  color: var(--color-card-foreground);
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    transform 0.25s ease;
 
-  .serif-headline {
-    font-size: var(--text-lg);
+  &__index {
+    color: var(--color-muted-foreground);
+    transition: color 0.25s ease;
   }
 
-  .meta {
+  &__title {
+    font-size: var(--text-3xl);
+  }
+
+  &__desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 3.25em;
+    font-size: var(--text-base);
+    line-height: 1.625;
+    opacity: 0.85;
+  }
+
+  &__meta {
     font-style: italic;
   }
 
-  &:hover {
-    background: var(--color-muted);
+  &__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
   }
 
-  &--active {
-    background: var(--color-foreground);
+  .arrow {
+    display: inline-block;
+    transition: transform 0.25s ease;
+  }
 
-    .serif-headline {
-      color: var(--color-accent-foreground);
+  &:hover,
+  &:focus-visible {
+    background: var(--color-foreground);
+    color: var(--color-accent-foreground);
+    border-color: var(--color-foreground);
+    transform: translateY(-3px);
+
+    .query-card__index {
+      color: var(--color-background);
+      opacity: 0.7;
     }
 
-    .meta {
-      color: var(--color-background);
-      opacity: 0.75;
+    .arrow {
+      transform: translateX(6px);
     }
   }
 
   &:focus-visible {
     outline: var(--focus-outline);
-    outline-offset: -3px;
-  }
-}
-
-.query__panel {
-  min-width: 0;
-}
-
-.query__panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
-}
-
-.query__panel-title {
-  font-size: var(--text-3xl);
-  margin-bottom: 0.25rem;
-}
-
-.query__panel-meta {
-  font-style: italic;
-}
-
-.query__mode-switch {
-  display: inline-flex;
-  border: var(--border-thin);
-}
-
-.query__mode-btn {
-  border: none;
-  border-radius: 0;
-
-  & + & {
-    border-left: var(--border-thin);
-  }
-
-  &--active {
-    background: var(--color-foreground);
-    color: var(--color-accent-foreground);
-  }
-}
-
-.query__browse,
-.query__ask {
-  min-width: 0;
-}
-
-@media (max-width: 768px) {
-  .query__layout {
-    grid-template-columns: 1fr;
-  }
-
-  .query__list {
-    border-right: none;
-    border-bottom: var(--border-thin);
-    padding-right: 0;
-    padding-bottom: 1rem;
+    outline-offset: 3px;
   }
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { AppButton, AppInput, AppCard, AppAlert, AppSpinner } from '@/components/ui';
 import {
   verifyConfigPassword,
@@ -7,6 +8,8 @@ import {
   updateConfig,
   errMessage,
 } from '@/api';
+
+const router = useRouter();
 
 const locked = ref(true);
 const password = ref('');
@@ -87,8 +90,10 @@ onMounted(() => {
 <template>
   <div class="config container">
     <header class="config__header">
-      <p class="label config__kicker">System Configuration</p>
-      <h1 class="serif-headline config__title">Configuration</h1>
+      <div class="page-head">
+        <button class="page-back" aria-label="Back to home" @click="router.push('/')">←</button>
+        <h1 class="serif-headline config__title">Configuration</h1>
+      </div>
       <hr class="rule-thick" />
     </header>
 
@@ -160,14 +165,8 @@ onMounted(() => {
     margin-bottom: 2.5rem;
   }
 
-  &__kicker {
-    color: var(--color-muted-foreground);
-    margin-bottom: 1rem;
-  }
-
   &__title {
     font-size: var(--text-5xl);
-    margin-bottom: 1.5rem;
   }
 
   &__gate {

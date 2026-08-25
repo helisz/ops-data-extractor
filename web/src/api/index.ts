@@ -49,6 +49,14 @@ export async function getProject(id: number): Promise<ProjectDetail> {
   return data;
 }
 
+export async function updateProject(
+  id: number,
+  body: { name: string; description: string },
+): Promise<Project> {
+  const { data } = await http.patch<Project>(`/projects/${id}`, body);
+  return data;
+}
+
 export async function deleteProject(id: number): Promise<void> {
   await http.delete(`/projects/${id}`);
 }

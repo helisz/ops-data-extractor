@@ -9,10 +9,16 @@ const props = withDefaults(
     projectId: number;
     showDownload?: boolean;
     refreshKey?: number;
+    /** CSS top value for the sticky header. Empty = measure the site topbar. */
+    stickyHeaderTop?: string;
+    /** Which scroller drives chunked loading. 'parent' = nearest wrapper ancestor. */
+    scrollContainer?: 'window' | 'parent';
   }>(),
   {
     showDownload: true,
     refreshKey: 0,
+    stickyHeaderTop: '',
+    scrollContainer: 'window',
   },
 );
 
@@ -36,6 +42,8 @@ const kvValue = ref('');
 
 let fetchSeq = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const wrapRef = ref<HTMLElement | null>(null);
 
 const activeFilterTags = computed(() =>
   Object.entries(filters.value).map(([column, value]) => {
@@ -184,11 +192,37 @@ function onDownload() {
   });
 }
 
-// Auto-load more when scrolled to the bottom of the table wrapper.
-function onScroll(event: Event) {
-  const el = event.target as HTMLElement;
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
-    loadNextChunk();
+// Auto-load more when the scroll target is near its bottom.
+function onScroll() {
+  const el = scrollTarget();
+  if (el instanceof HTMLElement) {
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+      loadNextChunk();
+    }
+  } else {
+    const doc = document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 80) {
+      loadNextChunk();
+    }
+  }
+}
+
+function scrollTarget(): EventTarget | Window {
+  if (props.scrollContainer === 'parent') {
+    return wrapRef.value?.parentElement ?? window;
+  }
+  return window;
+}
+
+// Keep the sticky table header just below the site topbar (or at the given offset).
+function updateStickyTop() {
+  let top = props.stickyHeaderTop;
+  if (!top) {
+    const header = document.querySelector('.site-header');
+    top = header ? `${header.getBoundingClientRect().height}px` : '0px';
+  }
+  if (wrapRef.value) {
+    wrapRef.value.style.setProperty('--sticky-table-top', top);
   }
 }
 
@@ -206,15 +240,20 @@ watch(
 
 onMounted(() => {
   if (props.projectId) init();
+  updateStickyTop();
+  window.addEventListener('resize', updateStickyTop);
+  scrollTarget().addEventListener('scroll', onScroll, { passive: true });
 });
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer);
+  window.removeEventListener('resize', updateStickyTop);
+  scrollTarget().removeEventListener('scroll', onScroll);
 });
 </script>
 
 <template>
-  <div class="data-table-wrap">
+  <div ref="wrapRef" class="data-table-wrap">
     <div class="data-table-toolbar">
       <div class="data-table-toolbar__meta">
         <span class="label">Data</span>
@@ -280,7 +319,7 @@ onBeforeUnmount(() => {
       <AppSpinner label="Loading data…" />
     </div>
 
-    <div v-else-if="meta && meta.headers.length" class="table-scroll" @scroll="onScroll">
+    <div v-else-if="meta && meta.headers.length" class="table-scroll">
       <table class="data-table">
         <thead>
           <tr>
@@ -426,7 +465,6 @@ onBeforeUnmount(() => {
 }
 
 .table-scroll {
-  overflow: auto;
   border-top: var(--border-thin);
 }
 
@@ -434,6 +472,10 @@ onBeforeUnmount(() => {
   min-width: 100%;
 
   th.data-table-th {
+    position: sticky;
+    top: var(--sticky-table-top, 4.875rem);
+    z-index: 10;
+    background: var(--color-background);
     border-bottom: var(--border-thin);
   }
 }

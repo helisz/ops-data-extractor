@@ -100,6 +100,34 @@ router.get('/:id', (req: Request, res: Response) => {
   });
 });
 
+// PATCH /api/projects/:id — update name / description
+router.patch('/:id', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const row = getDb().prepare('SELECT * FROM projects WHERE id = ?').get(id) as
+    | { id: number }
+    | undefined;
+  if (!row) {
+    res.status(404).json({ error: 'Project not found.' });
+    return;
+  }
+  const name = String(req.body?.name ?? '').trim();
+  const description = String(req.body?.description ?? '').trim();
+  if (!name) {
+    res.status(400).json({ error: 'Project name is required.' });
+    return;
+  }
+  getDb().prepare('UPDATE projects SET name = ?, description = ? WHERE id = ?').run(name, description, id);
+  const updated = getDb().prepare('SELECT * FROM projects WHERE id = ?').get(id) as {
+    id: number;
+    name: string;
+    description: string;
+    headers: string;
+    active_version_id: number | null;
+    created_at: string;
+  };
+  res.json(toListItem(updated));
+});
+
 // DELETE /api/projects/:id — delete project (drop data tables first)
 router.delete('/:id', (req: Request, res: Response) => {
   const id = Number(req.params.id);

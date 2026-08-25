@@ -1,7 +1,23 @@
 <script setup lang="ts">
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 
 const route = useRoute();
+const menuOpen = ref(false);
+const menuRef = ref<HTMLElement | null>(null);
+
+const isDataRoute = computed(
+  () => route.path.startsWith('/manage') || route.path.startsWith('/query'),
+);
+
+function onDocClick(event: MouseEvent) {
+  if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
+    menuOpen.value = false;
+  }
+}
+
+onMounted(() => document.addEventListener('click', onDocClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 </script>
 
 <template>
@@ -9,13 +25,49 @@ const route = useRoute();
   <div class="site-frame">
     <header class="site-header">
       <div class="container site-header-inner">
-        <router-link to="/" class="brand" aria-label="Data Management home">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <span class="brand-name">Data&nbsp;Management</span>
+        <router-link to="/" class="brand" aria-label="Agents for OPS home">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect
+              x="1.5"
+              y="1.5"
+              width="29"
+              height="29"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            />
+            <line x1="8" y1="24" x2="24" y2="8" stroke="currentColor" stroke-width="2.5" />
+            <circle cx="24" cy="8" r="3.5" fill="currentColor" />
+          </svg>
+          <span class="brand-name">Agents&nbsp;for&nbsp;OPS</span>
         </router-link>
         <nav class="site-nav" aria-label="Primary">
-          <router-link to="/manage" class="nav-link">Manage</router-link>
-          <router-link to="/query" class="nav-link">Query</router-link>
+          <div ref="menuRef" class="site-nav__menu">
+            <button
+              class="site-nav__trigger"
+              :class="{ 'site-nav__trigger--active': isDataRoute }"
+              :aria-expanded="menuOpen"
+              @click="menuOpen = !menuOpen"
+            >
+              Data Card
+              <span
+                class="site-nav__caret"
+                :class="{ 'site-nav__caret--open': menuOpen }"
+                aria-hidden="true"
+                >▾</span
+              >
+            </button>
+            <transition name="menu">
+              <div v-if="menuOpen" class="site-nav__dropdown">
+                <router-link to="/manage" class="nav-link" @click="menuOpen = false">
+                  Manage
+                </router-link>
+                <router-link to="/query" class="nav-link" @click="menuOpen = false">
+                  Query
+                </router-link>
+              </div>
+            </transition>
+          </div>
           <router-link to="/config" class="nav-link">Config</router-link>
         </nav>
       </div>
@@ -89,10 +141,10 @@ const route = useRoute();
 }
 
 .brand-mark {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--color-foreground);
-  background: var(--color-background);
+  width: 22px;
+  height: 22px;
+  color: var(--color-foreground);
+  flex-shrink: 0;
 }
 
 .brand-name {
@@ -112,7 +164,7 @@ const route = useRoute();
     min-height: 44px;
     padding: 0.5rem 0.875rem;
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     text-transform: uppercase;
     letter-spacing: var(--tracking-widest);
     color: var(--color-muted-foreground);
@@ -136,6 +188,90 @@ const route = useRoute();
       font-weight: 500;
     }
   }
+
+  &__menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  &__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0.5rem 0.875rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--color-muted-foreground);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color var(--duration-fast), border-color var(--duration-fast);
+
+    &:hover {
+      color: var(--color-foreground);
+    }
+
+    &--active {
+      color: var(--color-foreground);
+      border-bottom-color: var(--color-foreground);
+      font-weight: 500;
+    }
+
+    &:focus-visible {
+      outline: 3px solid var(--color-foreground);
+      outline-offset: 3px;
+    }
+  }
+
+  &__caret {
+    font-size: 0.75em;
+    transition: transform var(--duration-fast);
+
+    &--open {
+      transform: rotate(180deg);
+    }
+  }
+
+  &__dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    min-width: 11rem;
+    padding: 0.25rem 0;
+    background: var(--color-background);
+    border: var(--border-thin);
+
+    .nav-link {
+      min-height: 40px;
+      padding: 0.5rem 1rem;
+      border-bottom: none;
+
+      &.router-link-active {
+        background: var(--color-muted);
+        border-bottom: none;
+      }
+    }
+  }
+}
+
+.menu-enter-active,
+.menu-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.menu-enter-from,
+.menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .site-main {

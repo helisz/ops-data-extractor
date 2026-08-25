@@ -103,15 +103,7 @@ onMounted(loadHistory);
 
 <template>
   <div class="chat-panel">
-    <header class="chat-panel__header">
-      <p class="label chat-panel__kicker">Ask Mode — {{ projectName }}</p>
-      <p class="meta chat-panel__hint">
-        Ask a natural-language question; the LLM converts it to SQL, executes it against
-        the active version, and shows the result. Press Enter to send; Ctrl/Alt+Enter
-        inserts a new line.
-      </p>
-    </header>
-
+    
     <AppAlert v-if="error" variant="error">{{ error }}</AppAlert>
 
     <div ref="scrollEl" class="chat-panel__scroll">
