@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   getProject,
@@ -109,6 +109,25 @@ function formatDate(iso: string): string {
   return new Date(iso.replace(' ', 'T') + 'Z').toLocaleString();
 }
 
+function formatSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+// Fold overly long assistant replies in history; click to expand.
+const expandedHistory = ref<Set<number>>(new Set());
+const LONG_CONTENT = 320;
+
+function isLongContent(content: string): boolean {
+  return content.length > LONG_CONTENT;
+}
+
+function toggleHistoryContent(id: number) {
+  const next = new Set(expandedHistory.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  expandedHistory.value = next;
+}
+
 async function load() {
   loading.value = true;
   error.value = null;
@@ -128,7 +147,22 @@ watch(projectId, () => {
   load();
 });
 
-onMounted(load);
+// Measure the site topbar so the page height is exactly the remaining viewport.
+function updateTopbarVar() {
+  const header = document.querySelector('.site-header');
+  const h = header ? `${header.getBoundingClientRect().height}px` : '78px';
+  document.documentElement.style.setProperty('--topbar-h', h);
+}
+
+onMounted(() => {
+  load();
+  updateTopbarVar();
+  window.addEventListener('resize', updateTopbarVar);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateTopbarVar);
+});
 </script>
 
 <template>
@@ -171,56 +205,54 @@ onMounted(load);
       <hr class="rule-thick" />
     </header>
 
-    <div class="qdetail__body container">
-      <AppAlert v-if="error" variant="error">{{ error }}</AppAlert>
+    <AppAlert v-if="error" variant="error" class="qdetail__error container">{{ error }}</AppAlert>
 
-      <div v-if="loading" class="qdetail__loading">
-        <AppSpinner label="Loading project…" />
+    <template v-if="project">
+      <div class="qdetail__head container">
+        <AppButton variant="ghost" class="qdetail__back" @click="router.push('/query')">
+          ← Projects
+        </AppButton>
+        <div class="qdetail__head-text">
+          <div class="qdetail__head-title">
+            <h2 class="serif-headline qdetail__title-sub">{{ project.name }}</h2>
+            <p class="meta qdetail__meta">
+              {{
+                project.activeVersion
+                  ? `Active version ${project.activeVersion}`
+                  : 'No data uploaded yet'
+              }}
+            </p>
+          </div>
+          <p class="qdetail__head-desc">{{ project.description || 'No description' }}</p>
+        </div>
+        <div v-if="mode === 'ask'" class="qdetail__head-actions">
+          <AppButton variant="outline" @click="newChat">New Chat</AppButton>
+          <AppButton variant="outline" @click="openHistory">History</AppButton>
+        </div>
       </div>
 
-      <template v-else-if="project">
-        <div class="qdetail__head">
-          <AppButton variant="ghost" class="qdetail__back" @click="router.push('/query')">
-            ← Projects
-          </AppButton>
-          <div class="qdetail__head-text">
-            <div class="qdetail__head-title">
-              <h2 class="serif-headline qdetail__title-sub">{{ project.name }}</h2>
-              <p class="meta qdetail__meta">
-                {{
-                  project.activeVersion
-                    ? `Active version ${project.activeVersion}`
-                    : 'No data uploaded yet'
-                }}
-              </p>
-            </div>
-            <p class="qdetail__head-desc">{{ project.description || 'No description' }}</p>
-          </div>
-          <div class="qdetail__head-actions">
-            <AppButton variant="outline" @click="newChat">New Chat</AppButton>
-            <AppButton variant="outline" @click="openHistory">History</AppButton>
-          </div>
-        </div>
+      <div
+        class="qdetail__chat container"
+        :class="{ 'qdetail__chat--browse': mode === 'browse' }"
+      >
+        <DataTable
+          v-if="mode === 'browse'"
+          :project-id="projectId"
+          sticky-header-top="0px"
+          scroll-container="parent"
+        />
+        <ChatPanel
+          v-else
+          :key="chatKey"
+          :project-id="projectId"
+          :project-name="project.name"
+          :session-id="activeSessionId"
+        />
+      </div>
+    </template>
 
-        <div class="qdetail__content">
-          <div v-if="mode === 'browse'" class="qdetail__browse">
-            <DataTable
-              :project-id="projectId"
-              sticky-header-top="0px"
-              scroll-container="parent"
-            />
-          </div>
-
-          <div v-else class="qdetail__ask">
-            <ChatPanel
-              :key="chatKey"
-              :project-id="projectId"
-              :project-name="project.name"
-              :session-id="activeSessionId"
-            />
-          </div>
-        </div>
-      </template>
+    <div v-else-if="loading" class="qdetail__loading container">
+      <AppSpinner label="Loading project…" />
     </div>
 
     <AppModal v-model:open="helpOpen" title="Ask Mode">
@@ -284,12 +316,28 @@ onMounted(load);
                 <p class="qdetail__history-text">{{ m.content }}</p>
               </template>
               <template v-else>
-                <p v-if="m.content" class="qdetail__history-text">{{ m.content }}</p>
+                <!-- <p
+                  v-if="m.content"
+                  class="qdetail__history-text"
+                  :class="{
+                    'qdetail__history-text--clamped':
+                      isLongContent(m.content) && !expandedHistory.has(m.id),
+                  }"
+                >
+                  {{ m.content }}
+                </p> -->
+                <button
+                  v-if="m.content && isLongContent(m.content)"
+                  class="qdetail__history-toggle"
+                  @click="toggleHistoryContent(m.id)"
+                >
+                  {{ expandedHistory.has(m.id) ? 'Show less' : 'Show all' }}
+                </button>
                 <pre v-if="m.sql" class="qdetail__history-sql">{{ m.sql }}</pre>
                 <p v-if="m.execution" class="meta qdetail__history-exec">
                   status {{ m.execution.status }} ·
                   {{ m.execution.rowCount ?? 0 }} rows ·
-                  {{ m.execution.durationMs ?? 0 }} ms
+                  {{ formatSeconds(m.execution.durationMs ?? 0) }}
                 </p>
                 <div
                   v-if="m.result && m.result.rows.length"
@@ -325,8 +373,8 @@ onMounted(load);
 .qdetail {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  height: 0;
+  height: calc(100dvh - var(--topbar-h, 78px));
+  max-height: calc(100dvh - var(--topbar-h, 78px));
   min-height: 0;
   overflow: hidden;
 
@@ -347,28 +395,16 @@ onMounted(load);
     margin-left: auto;
   }
 
-  &__body {
-    flex: 1;
-    height: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    padding-bottom: 1.5rem;
-    overflow: hidden;
+  &__error {
+    padding-top: 0.75rem;
   }
 
   &__loading {
-    padding: 2rem 0;
-  }
-
-  &__content {
     flex: 1;
-    height: 0;
-    min-height: 0;
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 0;
   }
 
   &__head {
@@ -378,6 +414,20 @@ onMounted(load);
     gap: 1.5rem;
     flex-wrap: wrap;
     flex-shrink: 0;
+    padding-bottom: 1.25rem;
+  }
+
+  &__chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 1.5rem;
+
+    &--browse {
+      overflow: auto;
+    }
   }
 
   &__back {
@@ -586,6 +636,37 @@ onMounted(load);
     font-size: var(--text-base);
     line-height: 1.625;
     opacity: 0.9;
+
+    &--clamped {
+      display: -webkit-box;
+      -webkit-line-clamp: 6;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+  }
+
+  &__history-toggle {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: var(--color-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+      outline-offset: 2px;
+    }
   }
 
   &__history-sql {
@@ -630,18 +711,6 @@ onMounted(load);
     width: 1rem;
     height: 1rem;
     flex-shrink: 0;
-  }
-
-  &__browse,
-  &__ask {
-    min-width: 0;
-    flex: 1;
-    height: 0;
-    min-height: 0;
-  }
-
-  &__browse {
-    overflow: auto;
   }
 }
 </style>

@@ -15,6 +15,7 @@ const input = ref('');
 const sending = ref(false);
 const error = ref<string | null>(null);
 const scrollEl = ref<HTMLElement | null>(null);
+const totalTimes = ref<Map<number, number>>(new Map());
 let abortController: AbortController | null = null;
 
 // Custom textarea resize: drag the top border upward (max 300px).
@@ -95,6 +96,7 @@ async function send() {
   sending.value = true;
   error.value = null;
   abortController = new AbortController();
+  const sentAt = Date.now();
 
   const userMsg: ChatMessage = {
     id: Date.now(),
@@ -124,6 +126,7 @@ async function send() {
       result: res.result,
       created_at: new Date().toISOString(),
     };
+    totalTimes.value.set(assistantMsg.id, Date.now() - sentAt);
     messages.value = [...messages.value, assistantMsg];
     await scrollToBottom();
   } catch (err) {
@@ -142,6 +145,10 @@ async function send() {
 function formatDate(iso: string): string {
   const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
   return d.toLocaleString();
+}
+
+function formatSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(2)} s`;
 }
 
 // Split a message body into plain text and fenced code blocks.
@@ -240,7 +247,12 @@ onMounted(loadHistory);
             </div>
           </template>
         </div>
-        <p class="chat-message__time meta">{{ formatDate(msg.created_at) }}</p>
+        <p class="chat-message__time meta">
+          {{ formatDate(msg.created_at) }}
+          <template v-if="msg.role === 'assistant' && totalTimes.has(msg.id)">
+            · total {{ formatSeconds(totalTimes.get(msg.id) ?? 0) }}
+          </template>
+        </p>
       </div>
 
       <div v-if="sending" class="chat-message chat-message--assistant">
@@ -278,6 +290,7 @@ onMounted(loadHistory);
 .chat-panel {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: 1rem;
   height: 100%;
   min-height: 0;
