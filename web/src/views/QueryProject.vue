@@ -29,7 +29,7 @@ const projectId = computed(() => Number(route.params.id));
 const project = ref<ProjectDetail | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const mode = ref<Mode>('ask');
+const mode = ref<Mode>('browse');
 const helpOpen = ref(false);
 
 // Active chat session for the current conversation.
@@ -199,9 +199,10 @@ onBeforeUnmount(() => {
 
     <template v-if="project">
       <div class="qdetail__head container">
-        <AppButton variant="ghost" class="qdetail__back" @click="router.push('/query')">
+        <AppButton variant="ghost" class="qdetail__back" @click="router.push('/data/query')">
           ← Projects
         </AppButton>
+        <span class="qdetail__divider" aria-hidden="true"></span>
         <div class="qdetail__head-text">
           <div class="qdetail__head-title">
             <h2 class="serif-headline qdetail__title-sub">{{ project.name }}</h2>
@@ -233,19 +234,19 @@ onBeforeUnmount(() => {
           <div class="qdetail__tabs" role="tablist" aria-label="Query mode">
             <button
               class="qdetail__tab"
-              :class="{ 'qdetail__tab--active': mode === 'ask' }"
-              @click="mode = 'ask'"
-            >
-              <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
-              Ask
-            </button>
-            <button
-              class="qdetail__tab"
               :class="{ 'qdetail__tab--active': mode === 'browse' }"
               @click="mode = 'browse'"
             >
               <RectangleStackIcon class="qdetail__mode-icon" />
               Browse
+            </button>
+            <button
+              class="qdetail__tab"
+              :class="{ 'qdetail__tab--active': mode === 'ask' }"
+              @click="mode = 'ask'"
+            >
+              <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
+              Ask
             </button>
           </div>
         </div>
@@ -540,7 +541,7 @@ onBeforeUnmount(() => {
 
   &__divider {
     width: 1px;
-    height: 1.75rem;
+    align-self: stretch;
     background: var(--color-border-light);
     flex-shrink: 0;
   }

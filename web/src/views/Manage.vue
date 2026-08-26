@@ -52,7 +52,7 @@ async function submitCreate() {
     });
     createOpen.value = false;
     // Enter the new project directly
-    router.push(`/manage/${created.id}`);
+    router.push(`/data/manage/${created.id}`);
   } catch (err) {
     error.value = errMessage(err, 'Failed to create project.');
   } finally {
@@ -89,7 +89,7 @@ async function confirmDeleteProject() {
 }
 
 function openProject(id: number) {
-  router.push(`/manage/${id}`);
+  router.push(`/data/manage/${id}`);
 }
 
 function formatDate(iso: string): string {

@@ -11,6 +11,7 @@ import {
   validateAndExecuteSql,
   buildSystemPrompt,
   loadLlmSettings,
+  generateNoDataReply,
   type ExecutionResult,
 } from '../services/llm.js';
 
@@ -204,6 +205,20 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
           rowCount: executed.rowCount,
           durationMs: executed.durationMs,
         };
+        // When the query returns no rows, ask the LLM for a natural-language
+        // reply explaining the empty result.
+        if (executed.rowCount === 0) {
+          try {
+            const reply = await generateNoDataReply(message, sql, settings);
+            if (reply) {
+              assistantText = assistantText
+                ? `${assistantText}\n\n${reply}`
+                : reply;
+            }
+          } catch {
+            // If the follow-up call fails, keep the original response as-is.
+          }
+        }
       }
     }
   } catch (err) {

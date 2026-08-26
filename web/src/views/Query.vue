@@ -27,7 +27,7 @@ async function refreshProjects() {
 }
 
 function openProject(id: number) {
-  router.push(`/query/${id}`);
+  router.push(`/data/query/${id}`);
 }
 
 function formatDate(iso: string): string {

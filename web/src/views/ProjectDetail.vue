@@ -241,7 +241,7 @@ onMounted(load);
 
     <div class="detail__layout container">
       <aside class="detail__side">
-        <AppButton variant="ghost" class="detail__back" @click="router.push('/manage')">
+        <AppButton variant="ghost" class="detail__back" @click="router.push('/data/manage')">
           ← Projects
         </AppButton>
 

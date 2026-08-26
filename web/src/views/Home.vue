@@ -29,13 +29,13 @@ const modes = [
     title: 'Data Management',
     description:
       'Create projects, upload Excel files, manage versions and explore your data with sorting, filtering and key-value queries.',
-    route: '/manage',
+    route: '/data/manage',
   },
   {
     title: 'Data Query',
     description:
       'Open a project to browse its data or ask natural-language questions answered by an LLM that generates and executes SQL.',
-    route: '/query',
+    route: '/data/query',
   },
 ];
 

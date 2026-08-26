@@ -219,12 +219,32 @@ Its columns are:
 ${schema}
 
 Rules:
-- Return ONLY a single SELECT SQL statement, with no extra explanation.
+- First, write a BRIEF explanation (1-2 sentences) of how you interpret the user's question and what the query does.
+- Then, provide a single SELECT SQL statement wrapped in a markdown code block with \`\`\`sql.
 - Use the column names exactly as listed (double-quote them).
 - The user refers to columns by their user-facing headers; map them to the column names above.
 - Do not use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, ATTACH, PRAGMA or multiple statements.
-- You may use WHERE, GROUP BY, ORDER BY, JOINs and SQLite functions.
-- Wrap the final statement in a markdown code block with \`\`\`sql.`;
+- You may use WHERE, GROUP BY, ORDER BY, JOINs and SQLite functions.`;
+}
+
+/**
+ * Ask the LLM to produce a short natural-language reply when the SQL query
+ * returned zero rows. Passes the original question and the SQL so the LLM
+ * can explain why there might be no results.
+ */
+export async function generateNoDataReply(
+  question: string,
+  sql: string,
+  settings: LlmSettings,
+): Promise<string> {
+  const prompt = `The user asked: "${question}"
+
+The following SQL query was executed but returned 0 rows:
+${sql}
+
+Write a brief, helpful natural-language reply (1-2 sentences) explaining that no results were found and suggest possible reasons (e.g. the filter criteria may be too restrictive, or the data may not contain matching records). Do NOT include SQL or code blocks — just plain text.`;
+
+  return askLlm(prompt, settings);
 }
 
 /**

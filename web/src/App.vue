@@ -9,7 +9,7 @@ const menuRef = ref<HTMLElement | null>(null);
 const isDark = ref(false);
 
 const isDataRoute = computed(
-  () => route.path.startsWith('/manage') || route.path.startsWith('/query'),
+  () => route.path.startsWith('/data/manage') || route.path.startsWith('/data/query'),
 );
 
 function applyTheme(dark: boolean) {
@@ -77,10 +77,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
               </button>
               <transition name="menu">
                 <div v-if="menuOpen" class="site-nav__dropdown">
-                  <router-link to="/manage" class="nav-link" @click="menuOpen = false">
+                  <router-link to="/data/manage" class="nav-link" @click="menuOpen = false">
                     Manage
                   </router-link>
-                  <router-link to="/query" class="nav-link" @click="menuOpen = false">
+                  <router-link to="/data/query" class="nav-link" @click="menuOpen = false">
                     Query
                   </router-link>
                 </div>
