@@ -177,10 +177,12 @@ All endpoints are under `/api` (the frontend dev proxy forwards them to port 300
   ```bash
   lsof -ti:3001 | xargs kill    # macOS / Linux
   ```
-- **SQLite native module issues after a Node upgrade** — rebuild it:
+- **SQLite native module issues after a Node upgrade** — `better-sqlite3` 13.x ships N-API prebuilt binaries bundled in the package, so no native toolchain is required. On older Node, or if you previously pinned 11.x, rebuild/upgrade it:
   ```bash
-  npm rebuild better-sqlite3
+  npm install better-sqlite3@^13 -w server
+  # or, when a prebuilt is already available: npm rebuild better-sqlite3
   ```
+  If you still see `node-gyp` / `Could not find any Visual Studio` errors, you are on a version that falls back to source compilation. Either upgrade `better-sqlite3` to 13.x (no compiler needed) or install the "Desktop development with C++" workload of Visual Studio Build Tools.
 - **Ask mode reports "LLM is not configured"** — open **Configuration**, unlock with the password, and set base URL / API key / model.
 - **Upload says headers don't match** — the project schema is fixed by the first version; subsequent uploads must use the exact same column headers.
 - **Data seems missing after a project delete** — deletion intentionally drops the project's data tables and chat history; this is not recoverable.

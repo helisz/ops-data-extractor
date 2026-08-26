@@ -54,7 +54,7 @@ if (isMain) {
   const port = Number(process.env.PORT) || 3001;
   const app = createApp();
   getDb(); // ensure initialized
-  app.listen(port, () => {
-    console.log(`[server] API listening on http://localhost:${port}`);
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`[server] API listening on http://0.0.0.0:${port}`);
   });
 }

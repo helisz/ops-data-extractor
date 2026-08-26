@@ -81,6 +81,48 @@ export async function askLlm(
   return content;
 }
 
+/**
+ * Fetch the list of available model IDs from an OpenAI-compatible
+ * `{baseUrl}/models` endpoint.
+ */
+export async function listModels(baseUrl: string, apiKey: string): Promise<string[]> {
+  if (!baseUrl || !apiKey) {
+    throw new Error('Base URL and API key are required to fetch models.');
+  }
+
+  const url = `${normalizeBaseUrl(baseUrl)}/models`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (err) {
+    throw new Error(
+      `Failed to reach the models endpoint: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Models request failed (HTTP ${res.status}): ${body.slice(0, 500)}`);
+  }
+
+  let data: { data?: unknown };
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
+    throw new Error('Models endpoint returned an invalid JSON response.');
+  }
+
+  const list = Array.isArray(data.data) ? data.data : [];
+  return (list as Array<{ id?: string }>)
+    .map((m) => (typeof m?.id === 'string' ? m.id : ''))
+    .filter((id) => id.length > 0)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 /** Extract the first SQL statement from an LLM response. */
 export function extractSql(content: string): string | null {
   // Fenced sql block

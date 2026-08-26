@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import crypto from 'node:crypto';
+import { listModels } from '../services/llm.js';
 
 const CONFIG_PASSWORD = process.env.CONFIG_PASSWORD || 'Abc123de';
 
@@ -88,6 +89,25 @@ router.put('/', requireAuth, (req: Request, res: Response) => {
     model: get('llm_model'),
     hasApiKey: get('llm_api_key').length > 0,
   });
+});
+
+// POST /api/config/models — fetch available model IDs from the provider.
+// Uses the baseUrl/apiKey supplied in the request body (not the stored
+// values), so the user can probe a configuration before saving it.
+router.post('/models', requireAuth, async (req: Request, res: Response) => {
+  const { baseUrl, apiKey } = (req.body ?? {}) as { baseUrl?: string; apiKey?: string };
+  if (!baseUrl || !apiKey) {
+    res.status(400).json({ error: 'Base URL and API key are required.' });
+    return;
+  }
+  try {
+    const models = await listModels(baseUrl, apiKey);
+    res.json({ models });
+  } catch (err) {
+    res.status(502).json({
+      error: err instanceof Error ? err.message : 'Failed to fetch models.',
+    });
+  }
 });
 
 export default router;

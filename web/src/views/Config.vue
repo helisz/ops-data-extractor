@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { AppButton, AppInput, AppCard, AppAlert, AppSpinner } from '@/components/ui';
+import { AppButton, AppInput, AppSelect, AppCard, AppAlert, AppSpinner } from '@/components/ui';
 import {
   verifyConfigPassword,
   getConfig,
   updateConfig,
+  fetchModels,
   errMessage,
 } from '@/api';
 
@@ -21,7 +22,20 @@ const model = ref('');
 const hasApiKey = ref(false);
 const loading = ref(false);
 const saving = ref(false);
+const models = ref<string[]>([]);
+const fetchingModels = ref(false);
 const alert = ref<{ variant: 'success' | 'error'; message: string } | null>(null);
+
+// Options for the model dropdown. If the saved model is not in the fetched
+// list (or no list has been fetched yet), append it so the current selection
+// remains visible/selectable instead of showing a blank field.
+const modelOptions = computed(() => {
+  const opts = models.value.map((m) => ({ value: m, label: m }));
+  if (model.value && !models.value.includes(model.value)) {
+    opts.unshift({ value: model.value, label: model.value });
+  }
+  return opts;
+});
 
 async function unlock() {
   unlocking.value = true;
@@ -77,6 +91,30 @@ function lock() {
   locked.value = true;
   password.value = '';
   alert.value = null;
+}
+
+async function fetchModelList() {
+  fetchingModels.value = true;
+  alert.value = null;
+  try {
+    const fetched = await fetchModels({ baseUrl: baseUrl.value, apiKey: apiKey.value });
+    models.value = fetched;
+    if (fetched.length === 0) {
+      alert.value = { variant: 'error', message: 'No models returned by the provider.' };
+    } else if (model.value && !fetched.includes(model.value)) {
+      // Keep the current selection, but it is not in the new list.
+      alert.value = {
+        variant: 'success',
+        message: `Loaded ${fetched.length} models. The current model is not in the list.`,
+      };
+    } else {
+      alert.value = { variant: 'success', message: `Loaded ${fetched.length} models.` };
+    }
+  } catch (err) {
+    alert.value = { variant: 'error', message: errMessage(err, 'Failed to fetch models.') };
+  } finally {
+    fetchingModels.value = false;
+  }
 }
 
 onMounted(() => {
@@ -141,7 +179,26 @@ onMounted(() => {
               :placeholder="hasApiKey ? '••• saved — leave blank to keep' : 'Paste your API key'"
               autocomplete="new-password"
             />
-            <AppInput v-model="model" label="Model" placeholder="gpt-4o-mini" />
+            <div class="config__model">
+              <AppSelect
+                v-model="model"
+                label="Model"
+                :options="modelOptions"
+                placeholder="Fetch models to populate…"
+              />
+              <AppButton
+                variant="outline"
+                :loading="fetchingModels"
+                :disabled="!baseUrl || !apiKey"
+                class="config__model-fetch"
+                @click="fetchModelList"
+              >
+                Fetch models
+              </AppButton>
+              <p class="meta config__model-hint">
+                Enter Base URL and API Key above, then fetch available models.
+              </p>
+            </div>
             <div class="config__actions">
               <AppButton type="submit" :loading="saving">Save</AppButton>
               <p class="meta config__hint">
@@ -213,6 +270,20 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
+  }
+
+  &__model {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  &__model-fetch {
+    align-self: flex-start;
+  }
+
+  &__model-hint {
+    font-style: italic;
   }
 
   &__actions {

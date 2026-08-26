@@ -154,6 +154,16 @@ export async function updateConfig(body: {
   return data;
 }
 
+export async function fetchModels(body: {
+  baseUrl: string;
+  apiKey: string;
+}): Promise<string[]> {
+  const { data } = await http.post<{ models: string[] }>('/config/models', body, {
+    headers: authHeaders(),
+  });
+  return data.models;
+}
+
 // ---- Chat ----
 export async function postChatMessage(
   projectId: number,
