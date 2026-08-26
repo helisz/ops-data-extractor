@@ -74,7 +74,7 @@ Build and run with Docker Compose:
 docker compose up -d --build
 ```
 
-Open **http://localhost:3001**.
+Open **http://localhost:3333**.
 
 The container is a self-contained multi-stage build:
 - Builder stage installs deps (`--ignore-scripts`, since `better-sqlite3` v13 ships prebuilt binaries) and runs `npm run build`
@@ -94,7 +94,7 @@ To build and run without Compose:
 
 ```bash
 docker build -t ops-data-extractor .
-docker run -d -p 3001:3001 -e CONFIG_PASSWORD=yourpass -v ops-data:/app/data ops-data-extractor
+docker run -d -p 3333:3001 -e CONFIG_PASSWORD=yourpass -v ops-data:/app/data ops-data-extractor
 ```
 
 ### 4. Other useful scripts

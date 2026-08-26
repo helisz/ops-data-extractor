@@ -195,34 +195,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="qdetail">
-    <header class="qdetail__header container">
-      <div class="page-head">
-        <button class="page-back" aria-label="Back to home" @click="router.push('/')">←</button>
-        <h1 class="serif-headline qdetail__title">Query</h1>
-      </div>
-
-      <div class="qdetail__tabs" role="tablist" aria-label="Query mode">
-        <button
-          class="qdetail__tab"
-          :class="{ 'qdetail__tab--active': mode === 'ask' }"
-          @click="mode = 'ask'"
-        >
-          <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
-          Ask Mode
-        </button>
-        <button
-          class="qdetail__tab"
-          :class="{ 'qdetail__tab--active': mode === 'browse' }"
-          @click="mode = 'browse'"
-        >
-          <RectangleStackIcon class="qdetail__mode-icon" />
-          Browse Data
-        </button>
-      </div>
-
-      <hr class="rule-thick" />
-    </header>
-
     <AppAlert v-if="error" variant="error" class="qdetail__error container">{{ error }}</AppAlert>
 
     <template v-if="project">
@@ -243,18 +215,39 @@ onBeforeUnmount(() => {
           </div>
           <p class="qdetail__head-desc">{{ project.description || 'No description' }}</p>
         </div>
-        <div v-if="mode === 'ask'" class="qdetail__head-actions">
-          <button
-            class="qdetail__help"
-            aria-label="About Ask Mode"
-            @click="helpOpen = true"
-          >
-            <QuestionMarkCircleIcon class="qdetail__help-icon" />
-          </button>
-          <AppButton variant="outline" :disabled="!canNewChat" @click="newChat">
-            New Chat
-          </AppButton>
-          <AppButton variant="outline" @click="openHistory">History</AppButton>
+        <div class="qdetail__head-actions">
+          <div v-if="mode === 'ask'" class="qdetail__head-actions-ask">
+            <button
+              class="qdetail__help"
+              aria-label="About Ask Mode"
+              @click="helpOpen = true"
+            >
+              <QuestionMarkCircleIcon class="qdetail__help-icon" />
+            </button>
+            <AppButton variant="outline" :disabled="!canNewChat" @click="newChat">
+              New Chat
+            </AppButton>
+            <AppButton variant="outline" @click="openHistory">History</AppButton>
+          </div>
+          <span v-if="mode === 'ask'" class="qdetail__divider" aria-hidden="true"></span>
+          <div class="qdetail__tabs" role="tablist" aria-label="Query mode">
+            <button
+              class="qdetail__tab"
+              :class="{ 'qdetail__tab--active': mode === 'ask' }"
+              @click="mode = 'ask'"
+            >
+              <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
+              Ask
+            </button>
+            <button
+              class="qdetail__tab"
+              :class="{ 'qdetail__tab--active': mode === 'browse' }"
+              @click="mode = 'browse'"
+            >
+              <RectangleStackIcon class="qdetail__mode-icon" />
+              Browse
+            </button>
+          </div>
         </div>
       </div>
 
@@ -414,26 +407,13 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 
-  // Query title row sits flush against the tabs (this page only).
-  .page-head {
-    margin-bottom: 0;
-  }
-
-  &__header {
-    padding-top: 2.5rem;
-    padding-bottom: 1.5rem;
-    flex-shrink: 0;
-  }
-
-  &__title {
-    font-size: var(--text-5xl);
+  &__error {
+    padding-top: 0.75rem;
   }
 
   &__tabs {
     display: flex;
-    justify-content: flex-end;
-    gap: 1.5rem;
-    margin-top: 0.5rem;
+    gap: 0;
   }
 
   &__tab {
@@ -441,10 +421,9 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 0.5rem;
     min-height: 40px;
-    padding: 0.25rem 0.125rem;
+    padding: 0.25rem 0.75rem;
     background: none;
-    border: none;
-    border-bottom: 3px solid transparent;
+    border: 2px solid transparent;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     font-weight: 500;
@@ -454,25 +433,28 @@ onBeforeUnmount(() => {
     cursor: pointer;
     transition:
       color var(--duration-fast),
-      border-bottom-color var(--duration-fast);
+      border-color var(--duration-fast);
 
     &:hover {
       color: var(--color-foreground);
+      border-color: var(--color-border-light);
     }
 
     &--active {
-      color: var(--color-foreground);
-      border-bottom-color: var(--color-foreground);
+      background: var(--color-foreground);
+      color: var(--color-accent-foreground);
+      border-color: var(--color-foreground);
+
+      &:hover {
+        color: var(--color-accent-foreground);
+        border-color: var(--color-foreground);
+      }
     }
 
     &:focus-visible {
       outline: var(--focus-outline);
       outline-offset: 2px;
     }
-  }
-
-  &__error {
-    padding-top: 0.75rem;
   }
 
   &__loading {
@@ -490,6 +472,7 @@ onBeforeUnmount(() => {
     gap: 1.5rem;
     flex-wrap: wrap;
     flex-shrink: 0;
+    padding-top: 2.5rem;
     padding-bottom: 1.25rem;
   }
 
@@ -545,8 +528,21 @@ onBeforeUnmount(() => {
   &__head-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1.5rem;
     align-self: center;
+  }
+
+  &__head-actions-ask {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  &__divider {
+    width: 1px;
+    height: 1.75rem;
+    background: var(--color-border-light);
+    flex-shrink: 0;
   }
 
   &__help {

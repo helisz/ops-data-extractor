@@ -132,7 +132,7 @@ onMounted(refreshProjects);
   gap: 0.75rem;
   width: 100%;
   text-align: left;
-  background: var(--color-card);
+  background: var(--color-background);
   border: var(--border-thin);
   padding: 1.5rem;
   cursor: pointer;
@@ -186,13 +186,13 @@ onMounted(refreshProjects);
 
   &:hover,
   &:focus-visible {
-    background: var(--color-foreground);
-    color: var(--color-accent-foreground);
+    background: var(--color-card);
+    color: var(--color-card-foreground);
     border-color: var(--color-foreground);
     transform: translateY(-3px);
 
     .query-card__index {
-      color: var(--color-background);
+      color: var(--color-muted-foreground);
       opacity: 0.7;
     }
 

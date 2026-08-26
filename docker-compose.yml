@@ -4,7 +4,7 @@ services:
     image: ops-data-extractor:latest
     container_name: ops-data-extractor
     ports:
-      - "3001:3001"
+      - "3333:3001"
     environment:
       # Override these in production (or via a .env file next to this compose)
       CONFIG_PASSWORD: Abc123de

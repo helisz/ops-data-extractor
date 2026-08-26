@@ -229,7 +229,7 @@ onMounted(refreshProjects);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-card);
+  background: var(--color-background);
   border: var(--border-thin);
   transition:
     background-color 0.25s ease,
@@ -296,13 +296,13 @@ onMounted(refreshProjects);
 
   &:hover,
   &:focus-within {
-    background: var(--color-foreground);
-    color: var(--color-accent-foreground);
+    background: var(--color-card);
+    color: var(--color-card-foreground);
     border-color: var(--color-foreground);
     transform: translateY(-3px);
 
     .project-card__index {
-      color: var(--color-background);
+      color: var(--color-muted-foreground);
       opacity: 0.7;
     }
 

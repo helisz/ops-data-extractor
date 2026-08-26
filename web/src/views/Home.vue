@@ -275,6 +275,7 @@ function go(event: MouseEvent, route: string) {  // 保留新标签页/中键/�
       visibility 0s linear 0.3s;
 
     .hero__subcards-wrap--open & {
+      overflow: visible;
       opacity: 1;
       transform: none;
       visibility: visible;
@@ -290,7 +291,7 @@ function go(event: MouseEvent, route: string) {  // 保留新标签页/中键/�
   flex-direction: column;
   gap: 1rem;
   padding: 1.5rem;
-  background: var(--color-card);
+  background: var(--color-background);
   color: var(--color-card-foreground);
   border: var(--border-thin);
   text-decoration: none;
@@ -333,13 +334,13 @@ function go(event: MouseEvent, route: string) {  // 保留新标签页/中键/�
 
   &:hover,
   &:focus-visible {
-    background: var(--color-foreground);
-    color: var(--color-accent-foreground);
+    background: var(--color-card);
+    color: var(--color-card-foreground);
     border-color: var(--color-foreground);
     transform: translateY(-3px);
 
     .mode-card__index {
-      color: var(--color-background);
+      color: var(--color-muted-foreground);
       opacity: 0.7;
     }
 
