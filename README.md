@@ -19,14 +19,15 @@ The UI follows a strict **Minimalist Monochrome** design system: pure black & wh
 | Database | SQLite via `better-sqlite3` (WAL mode; file stored at `data/app.db`, gitignored) |
 | Excel | SheetJS (`xlsx`) for parsing and generating xls/xlsx |
 | LLM | OpenAI-compatible Chat Completions API (configurable base URL + API key + model) |
-| Tooling | npm workspaces monorepo, `concurrently` for the dev server |
+| Container | Docker (multi-stage `node:22-slim`, `docker compose up -d --build`) |
 
 ---
 
 ## Prerequisites
 
-- **Node.js ≥ 20** (developed on Node v23.10.0) and **npm ≥ 10**
-- No other global tooling required — SQLite is embedded via `better-sqlite3` (prebuilt binaries).
+- **Node.js ≥ 22** and **npm ≥ 10** (for local dev; not needed if running via Docker)
+- **Docker** (optional, recommended for other environments) — `docker compose up -d --build`
+- No other global tooling required — SQLite is embedded via `better-sqlite3` v13 (N-API prebuilt binaries, no native toolchain).
 
 ---
 
@@ -65,7 +66,38 @@ The backend serves the built frontend from `web/dist` (with SPA fallback) and th
 
 Open **http://localhost:3001**.
 
-### 3. Other useful scripts
+### 3. Docker (recommended for other environments)
+
+Build and run with Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Open **http://localhost:3001**.
+
+The container is a self-contained multi-stage build:
+- Builder stage installs deps (`--ignore-scripts`, since `better-sqlite3` v13 ships prebuilt binaries) and runs `npm run build`
+- Runner stage (`node:22-slim`) runs only `node server/dist/index.js`, serving both the API and the built frontend
+
+Configuration via environment variables in `docker-compose.yml`:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `CONFIG_PASSWORD` | `Abc123de` | Password to unlock the Configuration page |
+| `PORT` | `3001` | Port the backend listens on |
+| `DB_PATH` | `/app/data/app.db` | SQLite database file path (inside the container) |
+
+SQLite data is persisted in a named volume (`app-data` → `/app/data`).
+
+To build and run without Compose:
+
+```bash
+docker build -t ops-data-extractor .
+docker run -d -p 3001:3001 -e CONFIG_PASSWORD=yourpass -v ops-data:/app/data ops-data-extractor
+```
+
+### 4. Other useful scripts
 
 | Command | Description |
 | --- | --- |
@@ -118,6 +150,7 @@ PORT=3001 DB_PATH=data/app.db CONFIG_PASSWORD=Abc123de npm start
 4. **Configuration** (`/config`)
    - Unlock with the password (`Abc123de` by default; token is kept for the session).
    - Set the LLM **base URL**, **API key**, **model** (OpenAI-compatible). Example: `https://api.openai.com/v1` with model `gpt-4o-mini`. The API key is write-only — it is never returned by the API.
+   - **Fetch models** button — after entering base URL and API key, click Fetch models to pull the available model list from the provider's `/models` endpoint and pick from a dropdown instead of typing the model name manually.
    - **Lock** clears the session token.
 
 ---
@@ -127,6 +160,9 @@ PORT=3001 DB_PATH=data/app.db CONFIG_PASSWORD=Abc123de npm start
 ```
 .
 ├── package.json          # npm workspaces (server + web), root scripts
+├── Dockerfile             # multi-stage build (builder + node:22-slim runner)
+├── docker-compose.yml     # single-service compose with data volume
+├── .dockerignore
 ├── server/
 │   ├── src/
 │   │   ├── index.ts          # Express app, static serving + SPA fallback
@@ -166,6 +202,7 @@ All endpoints are under `/api` (the frontend dev proxy forwards them to port 300
 | GET | `/api/projects/:id/download` | Download the active version as xlsx |
 | POST | `/api/config/verify` | Unlock with `{password}` → token |
 | GET / PUT | `/api/config` | Read / save LLM settings (Bearer token required; apiKey never exposed on read) |
+| POST | `/api/config/models` | Fetch available model IDs from the provider (Bearer token + `{baseUrl, apiKey}` in body) |
 | POST | `/api/projects/:id/chat` | Ask a question `{message}` → LLM → SQL → executed result |
 | GET | `/api/projects/:id/chat` | Last 100 chat messages for the project |
 

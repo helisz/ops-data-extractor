@@ -1,0 +1,18 @@
+services:
+  ops-data-extractor:
+    build: .
+    image: ops-data-extractor:latest
+    container_name: ops-data-extractor
+    ports:
+      - "3001:3001"
+    environment:
+      # Override these in production (or via a .env file next to this compose)
+      CONFIG_PASSWORD: Abc123de
+      # PORT: 3001
+      # DB_PATH: /app/data/app.db
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
