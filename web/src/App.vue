@@ -1,14 +1,26 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
+import { SunIcon, MoonIcon } from '@heroicons/vue/24/outline';
 
 const route = useRoute();
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
+const isDark = ref(false);
 
 const isDataRoute = computed(
   () => route.path.startsWith('/manage') || route.path.startsWith('/query'),
 );
+
+function applyTheme(dark: boolean) {
+  isDark.value = dark;
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+}
+
+function toggleTheme() {
+  applyTheme(!isDark.value);
+}
 
 function onDocClick(event: MouseEvent) {
   if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
@@ -16,7 +28,12 @@ function onDocClick(event: MouseEvent) {
   }
 }
 
-onMounted(() => document.addEventListener('click', onDocClick));
+onMounted(() => {
+  const stored = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(stored ? stored === 'dark' : prefersDark);
+  document.addEventListener('click', onDocClick);
+});
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 </script>
 
@@ -41,35 +58,45 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
           </svg>
           <span class="brand-name">Agents&nbsp;for&nbsp;OPS</span>
         </router-link>
-        <nav class="site-nav" aria-label="Primary">
-          <div ref="menuRef" class="site-nav__menu">
-            <button
-              class="site-nav__trigger"
-              :class="{ 'site-nav__trigger--active': isDataRoute }"
-              :aria-expanded="menuOpen"
-              @click="menuOpen = !menuOpen"
-            >
-              Data Card
-              <span
-                class="site-nav__caret"
-                :class="{ 'site-nav__caret--open': menuOpen }"
-                aria-hidden="true"
-                >▾</span
+        <div class="site-header-right">
+          <nav class="site-nav" aria-label="Primary">
+            <div ref="menuRef" class="site-nav__menu">
+              <button
+                class="site-nav__trigger"
+                :class="{ 'site-nav__trigger--active': isDataRoute }"
+                :aria-expanded="menuOpen"
+                @click="menuOpen = !menuOpen"
               >
-            </button>
-            <transition name="menu">
-              <div v-if="menuOpen" class="site-nav__dropdown">
-                <router-link to="/manage" class="nav-link" @click="menuOpen = false">
-                  Manage
-                </router-link>
-                <router-link to="/query" class="nav-link" @click="menuOpen = false">
-                  Query
-                </router-link>
-              </div>
-            </transition>
-          </div>
-          <router-link to="/config" class="nav-link">Config</router-link>
-        </nav>
+                Data Card
+                <span
+                  class="site-nav__caret"
+                  :class="{ 'site-nav__caret--open': menuOpen }"
+                  aria-hidden="true"
+                  >▾</span
+                >
+              </button>
+              <transition name="menu">
+                <div v-if="menuOpen" class="site-nav__dropdown">
+                  <router-link to="/manage" class="nav-link" @click="menuOpen = false">
+                    Manage
+                  </router-link>
+                  <router-link to="/query" class="nav-link" @click="menuOpen = false">
+                    Query
+                  </router-link>
+                </div>
+              </transition>
+            </div>
+            <router-link to="/config" class="nav-link">Config</router-link>
+          </nav>
+          <button
+            class="theme-toggle"
+            :aria-label="isDark ? 'Switch to light theme' : 'Switch to dark theme'"
+            @click="toggleTheme"
+          >
+            <SunIcon v-if="isDark" class="theme-toggle__icon" aria-hidden="true" />
+            <MoonIcon v-else class="theme-toggle__icon" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </header>
     <main id="main-content" class="site-main">
@@ -125,6 +152,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   gap: 1rem;
   padding-top: 1rem;
   padding-bottom: 1rem;
+}
+
+.site-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .brand {
@@ -301,6 +334,37 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 
   .nav-link {
     padding: 0.5rem 0.5rem;
+  }
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: 2px solid transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast);
+
+  &:hover {
+    color: var(--color-foreground);
+    border-color: var(--color-foreground);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: 3px;
+  }
+
+  &__icon {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 }
 </style>

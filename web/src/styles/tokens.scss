@@ -63,3 +63,26 @@
   --focus-outline: 3px solid #000000;
   --focus-offset: 3px;
 }
+
+// ---- Dark theme ----
+:root.dark {
+  --color-background: #1a1a1a;
+  --color-foreground: #ffffff;
+  --color-muted: #2a2a2a;
+  --color-muted-foreground: #a3a3a3;
+  --color-accent: #ffffff;
+  --color-accent-foreground: #1a1a1a;
+  --color-border: #ffffff;
+  --color-border-light: #3a3a3a;
+  --color-card: #242424;
+  --color-card-foreground: #ffffff;
+  --color-ring: #ffffff;
+
+  --border-hairline: 1px solid #3a3a3a;
+  --border-thin: 1px solid #ffffff;
+  --border-medium: 2px solid #ffffff;
+  --border-thick: 4px solid #ffffff;
+  --border-ultra: 8px solid #ffffff;
+
+  --focus-outline: 3px solid #ffffff;
+}
