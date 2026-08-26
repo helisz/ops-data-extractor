@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { AppButton, AppInput, AppSelect, AppCard, AppAlert, AppSpinner } from '@/components/ui';
+import { LockOpenIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
 import {
   verifyConfigPassword,
   getConfig,
@@ -136,8 +137,8 @@ onMounted(() => {
     </header>
 
     <div v-if="locked" class="config__gate">
+      <h2 class="serif-headline config__gate-title">Protected Area</h2>
       <AppCard class="config__gate-card">
-        <p class="label config__gate-label">Protected Area</p>
         <p class="config__gate-desc">
           This page controls the LLM settings used by Ask mode. Enter the
           configuration password to continue.
@@ -150,7 +151,10 @@ onMounted(() => {
             placeholder="Enter configuration password"
             autocomplete="current-password"
           />
-          <AppButton type="submit" :loading="unlocking" class="config__unlock">Unlock</AppButton>
+          <AppButton type="submit" :loading="unlocking" class="config__unlock">
+            <LockOpenIcon class="config__btn-icon" aria-hidden="true" />
+            Unlock
+          </AppButton>
         </form>
         <AppAlert v-if="alert" :variant="alert.variant">{{ alert.message }}</AppAlert>
       </AppCard>
@@ -164,7 +168,10 @@ onMounted(() => {
         <template v-else>
           <div class="config__settings-head">
             <h2 class="serif-headline config__settings-title">LLM Settings</h2>
-            <AppButton variant="ghost" @click="lock">Lock</AppButton>
+            <AppButton variant="ghost" @click="lock">
+              <LockClosedIcon class="config__btn-icon" aria-hidden="true" />
+              Lock
+            </AppButton>
           </div>
           <form class="config__form" @submit.prevent="save">
             <AppInput
@@ -228,28 +235,45 @@ onMounted(() => {
 
   &__gate {
     max-width: 34rem;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  &__gate-title {
+    font-size: var(--text-2xl);
+    margin-bottom: 1.25rem;
   }
 
   &__gate-card {
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
-  }
-
-  &__gate-label {
-    color: var(--color-muted-foreground);
   }
 
   &__gate-desc {
     line-height: 1.625;
   }
 
+  &__btn-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+
   &__unlock {
     margin-top: 1.25rem;
   }
 
-  &__settings-card {
+  &__settings {
     max-width: 40rem;
+    margin-inline: auto;
+  }
+
+  &__settings-card {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;

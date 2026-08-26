@@ -306,11 +306,11 @@ function go(event: MouseEvent, route: string) {  // 保留新标签页/中键/�
   }
 
   &__title {
-    font-size: var(--text-3xl);
+    font-size: var(--text-xl);
   }
 
   &__desc {
-    font-size: var(--text-base);
+    font-size: var(--text-sm);
     line-height: 1.625;
     opacity: 0.85;
   }
