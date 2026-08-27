@@ -7,12 +7,14 @@ import {
 } from '../services/tableService.js';
 import {
   askLlm,
+  askLlmWithMessages,
   extractSql,
   validateAndExecuteSql,
   buildSystemPrompt,
   loadLlmSettings,
   generateNoDataReply,
   type ExecutionResult,
+  type ChatMessageItem,
 } from '../services/llm.js';
 
 const router = Router();
@@ -48,6 +50,65 @@ function getProjectOr404(projectId: number, res: Response) {
   }
   return project;
 }
+
+interface ChatSettingsRow {
+  memory_enabled: number;
+  prompt_enabled: number;
+  custom_prompt: string;
+}
+
+function getChatSettings(projectId: number): { memoryEnabled: boolean; promptEnabled: boolean; customPrompt: string } {
+  const row = getDb()
+    .prepare('SELECT memory_enabled, prompt_enabled, custom_prompt FROM project_chat_settings WHERE project_id = ?')
+    .get(projectId) as ChatSettingsRow | undefined;
+  if (!row) return { memoryEnabled: true, promptEnabled: false, customPrompt: '' };
+  return {
+    memoryEnabled: row.memory_enabled === 1,
+    promptEnabled: row.prompt_enabled === 1,
+    customPrompt: row.custom_prompt,
+  };
+}
+
+function upsertChatSettings(
+  projectId: number,
+  memoryEnabled: boolean,
+  promptEnabled: boolean,
+  customPrompt: string,
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO project_chat_settings (project_id, memory_enabled, prompt_enabled, custom_prompt)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(project_id) DO UPDATE SET
+         memory_enabled = excluded.memory_enabled,
+         prompt_enabled = excluded.prompt_enabled,
+         custom_prompt = excluded.custom_prompt`,
+    )
+    .run(projectId, memoryEnabled ? 1 : 0, promptEnabled ? 1 : 0, customPrompt);
+}
+
+// GET /api/projects/:projectId/chat-settings — read chat settings
+router.get('/:projectId/chat-settings', (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  if (!getProjectOr404(projectId, res)) return;
+  res.json(getChatSettings(projectId));
+});
+
+// PUT /api/projects/:projectId/chat-settings — update chat settings
+router.put('/:projectId/chat-settings', (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  if (!getProjectOr404(projectId, res)) return;
+  const { memoryEnabled, promptEnabled, customPrompt } = (req.body ?? {}) as {
+    memoryEnabled?: boolean;
+    promptEnabled?: boolean;
+    customPrompt?: string;
+  };
+  const mem = typeof memoryEnabled === 'boolean' ? memoryEnabled : true;
+  const promptOn = typeof promptEnabled === 'boolean' ? promptEnabled : false;
+  const prompt = typeof customPrompt === 'string' ? customPrompt.trim() : '';
+  upsertChatSettings(projectId, mem, promptOn, prompt);
+  res.json({ memoryEnabled: mem, promptEnabled: promptOn, customPrompt: prompt });
+});
 
 // POST /api/projects/:projectId/chat/sessions — start a new chat session
 router.post('/:projectId/chat/sessions', (req: Request, res: Response) => {
@@ -174,11 +235,39 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
 
   const db = getDb();
   const tableName = dataTableName(projectId, active.version_number);
+  const chatSettings = getChatSettings(projectId);
+
+  // Auto-create a session when none is provided, so every conversation
+  // is captured in history without pre-creating empty sessions.
+  let sessionIdValue = sessionId;
+  if (sessionIdValue == null) {
+    const result = db
+      .prepare('INSERT INTO chat_sessions (project_id) VALUES (?)')
+      .run(projectId);
+    sessionIdValue = Number(result.lastInsertRowid);
+  }
+
+  // When memory is enabled, fetch recent chat history (before the current
+  // message) for context.
+  let historyMessages: ChatMessageItem[] = [];
+  if (chatSettings.memoryEnabled) {
+    const historyRows = db
+      .prepare(
+        `SELECT role, content FROM chat_messages
+         WHERE project_id = ? AND session_id = ?
+           AND content IS NOT NULL
+         ORDER BY created_at DESC, id DESC LIMIT 10`,
+      )
+      .all(projectId, sessionIdValue) as Array<{ role: string; content: string }>;
+    historyMessages = historyRows.reverse()
+      .filter((h) => h.role === 'user' || h.role === 'assistant')
+      .map((h) => ({ role: h.role as 'user' | 'assistant', content: h.content }));
+  }
 
   // Persist the user message.
   db.prepare(
     'INSERT INTO chat_messages (project_id, role, content, session_id) VALUES (?, ?, ?, ?)',
-  ).run(projectId, 'user', message, sessionId);
+  ).run(projectId, 'user', message, sessionIdValue);
 
   let assistantText = '';
   let sql: string | null = null;
@@ -188,8 +277,20 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
   let result: ExecutionResult | null = null;
 
   try {
-    const prompt = `${buildSystemPrompt(project.name, tableName, mappings)}\n\nUser question:\n${message}`;
-    assistantText = await askLlm(prompt, settings);
+    // Build the system prompt, optionally appending the user's custom prompt.
+    let systemPrompt = buildSystemPrompt(project.name, tableName, mappings);
+    if (chatSettings.promptEnabled && chatSettings.customPrompt) {
+      systemPrompt += `\n\nAdditional instructions from the user:\n${chatSettings.customPrompt}`;
+    }
+
+    // Build the messages array: system + history + current question.
+    const messages: ChatMessageItem[] = [
+      { role: 'system', content: systemPrompt },
+      ...historyMessages,
+      { role: 'user', content: message },
+    ];
+
+    assistantText = await askLlmWithMessages(messages, settings);
     sql = extractSql(assistantText) || extractSql(message) || null;
 
     if (!sql) {
@@ -239,31 +340,23 @@ router.post('/:projectId/chat', async (req: Request, res: Response) => {
     sql,
     JSON.stringify(execution),
     result ? JSON.stringify({ columns: result.columns, rows: result.rows }) : null,
-    sessionId,
+    sessionIdValue,
   );
 
-  // Prune to the latest 100 messages for this session (or project when no session).
-  if (sessionId != null) {
-    db.prepare(
-      `DELETE FROM chat_messages WHERE session_id = ? AND id NOT IN (
-         SELECT id FROM chat_messages WHERE session_id = ?
-         ORDER BY created_at DESC, id DESC LIMIT 100
-       )`,
-    ).run(sessionId, sessionId);
-  } else {
-    db.prepare(
-      `DELETE FROM chat_messages WHERE project_id = ? AND session_id IS NULL AND id NOT IN (
-         SELECT id FROM chat_messages WHERE project_id = ? AND session_id IS NULL
-         ORDER BY created_at DESC, id DESC LIMIT 100
-       )`,
-    ).run(projectId, projectId);
-  }
+  // Prune to the latest 100 messages for this session.
+  db.prepare(
+    `DELETE FROM chat_messages WHERE session_id = ? AND id NOT IN (
+       SELECT id FROM chat_messages WHERE session_id = ?
+       ORDER BY created_at DESC, id DESC LIMIT 100
+     )`,
+  ).run(sessionIdValue, sessionIdValue);
 
   res.json({
     assistantText,
     sql,
     execution,
     result: result ? { columns: result.columns, rows: result.rows } : null,
+    sessionId: sessionIdValue,
   });
 });
 

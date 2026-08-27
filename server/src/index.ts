@@ -19,8 +19,20 @@ export function createApp() {
   const app = express();
   app.locals.db = db;
 
+  // Disable ETag generation — it causes 304 Not Modified responses which
+  // prevent the browser from fetching fresh API data (chat history etc.).
+  app.set('etag', false);
+
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
+
+  // Disable caching for all API responses — chat data must always be fresh.
+  app.use('/api', (_req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    next();
+  });
 
   // Health check
   app.get('/api/health', (_req, res) => {

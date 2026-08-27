@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
-import axios from 'axios';
-import { postChatMessage, getChatHistory, getChatSessionMessages, errMessage } from '@/api';
+import { postChatMessage, getChatSessionMessages, errMessage } from '@/api';
 import type { ChatMessage } from '@/api/types';
 import { AppButton, AppAlert, AppSpinner } from '@/components/ui';
 
@@ -10,6 +9,8 @@ const props = withDefaults(
   { sessionId: null },
 );
 
+const emit = defineEmits<{ (e: 'session-created', sessionId: number): void }>();
+
 const messages = ref<ChatMessage[]>([]);
 const input = ref('');
 const sending = ref(false);
@@ -17,6 +18,22 @@ const error = ref<string | null>(null);
 const scrollEl = ref<HTMLElement | null>(null);
 const totalTimes = ref<Map<number, number>>(new Map());
 let abortController: AbortController | null = null;
+
+// User messages for the minimap rail.
+const userMessages = computed(() => messages.value.filter((m) => m.role === 'user'));
+
+// Minimap bars — one per user message (id + content only).
+const minimapBars = computed(() =>
+  userMessages.value.map((m) => ({ id: m.id, content: m.content })),
+);
+
+function scrollToMessage(id: number) {
+  // Scroll to the message by finding its DOM element via data attribute.
+  const el = scrollEl.value?.querySelector(`[data-msg-id="${id}"]`) as HTMLElement | null;
+  if (el && scrollEl.value) {
+    scrollEl.value.scrollTo({ top: el.offsetTop - 8, behavior: 'smooth' });
+  }
+}
 
 // Custom textarea resize: drag the top border upward (max 300px).
 const MAX_INPUT_HEIGHT = 300;
@@ -74,7 +91,8 @@ async function loadHistory() {
     if (props.sessionId != null) {
       messages.value = await getChatSessionMessages(props.projectId, props.sessionId);
     } else {
-      messages.value = await getChatHistory(props.projectId);
+      // No active session (new chat) — start with an empty panel.
+      messages.value = [];
     }
     await scrollToBottom();
   } catch (err) {
@@ -117,6 +135,9 @@ async function send() {
       props.sessionId,
       abortController.signal,
     );
+    if (res.sessionId && props.sessionId == null) {
+      emit('session-created', res.sessionId);
+    }
     const assistantMsg: ChatMessage = {
       id: Date.now() + 1,
       role: 'assistant',
@@ -130,7 +151,7 @@ async function send() {
     messages.value = [...messages.value, assistantMsg];
     await scrollToBottom();
   } catch (err) {
-    if (axios.isCancel(err)) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
       error.value = 'Stopped.';
     } else {
       error.value = errMessage(err, 'Failed to get a response.');
@@ -183,8 +204,19 @@ defineExpose({ messageCount: computed(() => messages.value.length) });
     
     <AppAlert v-if="error" variant="error">{{ error }}</AppAlert>
 
-    <div ref="scrollEl" class="chat-panel__scroll">
-      <div v-if="messages.length === 0" class="chat-panel__empty">
+    <div class="chat-panel__body">
+      <div class="chat-panel__minimap" v-if="minimapBars.length">
+        <div
+          v-for="bar in minimapBars"
+          :key="bar.id"
+          class="chat-panel__minimap-bar"
+          @click="scrollToMessage(bar.id)"
+        >
+          <span class="chat-panel__minimap-tooltip">{{ bar.content }}</span>
+        </div>
+      </div>
+      <div ref="scrollEl" class="chat-panel__scroll">
+        <div v-if="messages.length === 0" class="chat-panel__empty">
         <p class="serif-headline">Ask anything</p>
         <p class="meta">
           e.g. “How many rows have status ‘Done’?” or “Average of Amount per Region”.
@@ -194,6 +226,7 @@ defineExpose({ messageCount: computed(() => messages.value.length) });
       <div
         v-for="msg in messages"
         :key="msg.id"
+        :data-msg-id="msg.id"
         class="chat-message"
         :class="`chat-message--${msg.role}`"
       >
@@ -257,9 +290,10 @@ defineExpose({ messageCount: computed(() => messages.value.length) });
         </p>
       </div>
 
-      <div v-if="sending" class="chat-message chat-message--assistant">
-        <div class="chat-message__bubble">
-          <AppSpinner label="Thinking & executing…" />
+        <div v-if="sending" class="chat-message chat-message--assistant">
+          <div class="chat-message__bubble">
+            <AppSpinner label="Thinking & executing…" />
+          </div>
         </div>
       </div>
     </div>
@@ -313,6 +347,14 @@ defineExpose({ messageCount: computed(() => messages.value.length) });
     font-style: italic;
   }
 
+  &__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    position: relative;
+    gap: 0;
+  }
+
   &__scroll {
     flex: 1;
     min-height: 0;
@@ -320,9 +362,64 @@ defineExpose({ messageCount: computed(() => messages.value.length) });
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
-    padding: 1rem 0.25rem;
+    padding: 1rem 0.25rem 1rem 4rem;
     border-top: var(--border-hairline);
     border-bottom: var(--border-hairline);
+  }
+
+  &__minimap {
+    position: absolute;
+    left: 0.5rem;
+    top: 0;
+    bottom: 0;
+    width: 50px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 30px;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  &__minimap-bar {
+    width: 15px;
+    height: 5px;
+    background: var(--color-border-light);
+    cursor: pointer;
+    transition: width var(--duration-fast), background-color var(--duration-fast);
+    position: relative;
+    pointer-events: auto;
+
+    &:hover {
+      width: 50px;
+      background: var(--color-muted-foreground);
+
+      .chat-panel__minimap-tooltip {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+  }
+
+  &__minimap-tooltip {
+    position: absolute;
+    left: calc(100% + 0.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: 200px;
+    padding: 0.375rem 0.625rem;
+    background: var(--color-foreground);
+    color: var(--color-accent-foreground);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast);
+    z-index: 10;
   }
 
   &__empty {

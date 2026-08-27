@@ -27,12 +27,29 @@ export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 
+/** A chat message in the OpenAI completions format. */
+export interface ChatMessageItem {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 /**
  * Call an OpenAI-compatible chat completions endpoint and return the
  * assistant's text content.
  */
 export async function askLlm(
   prompt: string,
+  settings: LlmSettings,
+): Promise<string> {
+  return askLlmWithMessages([{ role: 'user', content: prompt }], settings);
+}
+
+/**
+ * Call an OpenAI-compatible chat completions endpoint with a full message
+ * array (system / user / assistant roles), enabling multi-turn context.
+ */
+export async function askLlmWithMessages(
+  messages: ChatMessageItem[],
   settings: LlmSettings,
 ): Promise<string> {
   const { baseUrl, apiKey, model } = settings;
@@ -51,7 +68,7 @@ export async function askLlm(
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
         temperature: 0,
         max_tokens: 1500,
       }),

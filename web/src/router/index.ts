@@ -37,6 +37,12 @@ const router = createRouter({
           component: () => import('@/views/QueryProject.vue'),
           meta: { title: 'Project Query' },
         },
+        {
+          path: 'query/:id/ask',
+          name: 'query-project-ask',
+          component: () => import('@/views/QueryProject.vue'),
+          meta: { title: 'Project Ask' },
+        },
       ],
     },
     {

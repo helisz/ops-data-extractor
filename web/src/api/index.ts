@@ -211,4 +211,24 @@ export async function deleteChatSession(projectId: number, sessionId: number): P
   await http.delete(`/projects/${projectId}/chat/sessions/${sessionId}`);
 }
 
+// ---- Chat Settings ----
+export interface ChatSettings {
+  memoryEnabled: boolean;
+  promptEnabled: boolean;
+  customPrompt: string;
+}
+
+export async function getChatSettings(projectId: number): Promise<ChatSettings> {
+  const { data } = await http.get<ChatSettings>(`/projects/${projectId}/chat-settings`);
+  return data;
+}
+
+export async function updateChatSettings(
+  projectId: number,
+  body: ChatSettings,
+): Promise<ChatSettings> {
+  const { data } = await http.put<ChatSettings>(`/projects/${projectId}/chat-settings`, body);
+  return data;
+}
+
 export { errMessage };

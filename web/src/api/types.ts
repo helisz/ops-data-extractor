@@ -66,6 +66,7 @@ export interface ChatResponse {
   sql: string | null;
   execution: ExecutionMeta;
   result: { columns: string[]; rows: Record<string, unknown>[] } | null;
+  sessionId: number;
 }
 
 export interface ChatSession {

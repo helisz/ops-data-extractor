@@ -3,10 +3,11 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   getProject,
-  createChatSession,
   getChatSessions,
   getChatSessionMessages,
   deleteChatSession,
+  getChatSettings,
+  updateChatSettings,
   errMessage,
 } from '@/api';
 import type { ProjectDetail, ChatMessage, ChatSession } from '@/api/types';
@@ -18,6 +19,8 @@ import {
   RectangleStackIcon,
   QuestionMarkCircleIcon,
   TrashIcon,
+  EllipsisHorizontalIcon,
+  ArrowPathIcon,
 } from '@heroicons/vue/24/outline';
 
 type Mode = 'browse' | 'ask';
@@ -29,41 +32,59 @@ const projectId = computed(() => Number(route.params.id));
 const project = ref<ProjectDetail | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const mode = ref<Mode>('browse');
+const mode = computed<Mode>(() => (route.name === 'query-project-ask' ? 'ask' : 'browse'));
 const helpOpen = ref(false);
+
+// "More" dropdown menu (ask mode actions).
+const moreOpen = ref(false);
+const moreMenuRef = ref<HTMLElement | null>(null);
+
+function onDocClick(event: MouseEvent) {
+  if (moreMenuRef.value && !moreMenuRef.value.contains(event.target as Node)) {
+    moreOpen.value = false;
+  }
+}
 
 // Active chat session for the current conversation.
 const activeSessionId = ref<number | null>(null);
 const chatKey = ref(0);
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null);
+// When true, the user started a new (empty) chat — don't auto-load an
+// existing session. Reset to false once a message creates a real session.
+const isNewChat = ref(false);
 
 // New Chat is disabled while the current session has no messages.
 const canNewChat = computed(() => (chatPanelRef.value?.messageCount ?? 0) > 0);
 
-// Reuse the newest session if one exists, otherwise start a fresh one.
+// Load the most recent session as the active one (unless the user just
+// started a new chat). The session is created lazily by the backend on
+// the first message.
 async function ensureSession() {
+  if (isNewChat.value) return;
   try {
     const sessions = await getChatSessions(projectId.value);
     if (sessions.length > 0) {
       activeSessionId.value = sessions[0].id;
     } else {
-      const s = await createChatSession(projectId.value);
-      activeSessionId.value = s.id;
+      activeSessionId.value = null;
     }
   } catch {
     activeSessionId.value = null;
   }
 }
 
-// New chat: persist the current conversation and start a new session.
-async function newChat() {
-  try {
-    const s = await createChatSession(projectId.value);
-    activeSessionId.value = s.id;
-    chatKey.value += 1;
-  } catch (err) {
-    error.value = errMessage(err, 'Failed to start a new chat.');
-  }
+// Called when ChatPanel creates a session via the first message.
+function onSessionCreated(sid: number) {
+  activeSessionId.value = sid;
+  isNewChat.value = false;
+}
+
+// New chat: clear the current panel; the session is created on the first
+// message (lazily by the backend) to avoid empty sessions in history.
+function newChat() {
+  isNewChat.value = true;
+  activeSessionId.value = null;
+  chatKey.value += 1;
 }
 
 // Chat history: session list (by time) -> session detail (input / SQL).
@@ -75,6 +96,48 @@ const selectedSession = ref<ChatSession | null>(null);
 const sessionMessages = ref<ChatMessage[]>([]);
 const sessionLoading = ref(false);
 const sessionError = ref<string | null>(null);
+
+// Chat settings: memory toggle + custom prompt.
+const settingsOpen = ref(false);
+const settingsLoading = ref(false);
+const settingsSaving = ref(false);
+const settingsError = ref<string | null>(null);
+const memEnabled = ref(true);
+const promptEnabled = ref(false);
+const customPrompt = ref('');
+
+async function openSettings() {
+  settingsOpen.value = true;
+  settingsError.value = null;
+  settingsLoading.value = true;
+  try {
+    const s = await getChatSettings(projectId.value);
+    memEnabled.value = s.memoryEnabled;
+    promptEnabled.value = s.promptEnabled;
+    customPrompt.value = s.customPrompt;
+  } catch (err) {
+    settingsError.value = errMessage(err, 'Failed to load chat settings.');
+  } finally {
+    settingsLoading.value = false;
+  }
+}
+
+async function saveSettings() {
+  settingsSaving.value = true;
+  settingsError.value = null;
+  try {
+    await updateChatSettings(projectId.value, {
+      memoryEnabled: memEnabled.value,
+      promptEnabled: promptEnabled.value,
+      customPrompt: customPrompt.value,
+    });
+    settingsOpen.value = false;
+  } catch (err) {
+    settingsError.value = errMessage(err, 'Failed to save chat settings.');
+  } finally {
+    settingsSaving.value = false;
+  }
+}
 
 async function openHistory() {
   historyOpen.value = true;
@@ -108,6 +171,15 @@ async function openSession(session: ChatSession) {
 function backToSessions() {
   selectedSession.value = null;
   sessionMessages.value = [];
+}
+
+// Resume a chat session: set it as active and switch to ask mode.
+function resumeChat(session: ChatSession) {
+  isNewChat.value = false;
+  activeSessionId.value = session.id;
+  chatKey.value += 1;
+  historyOpen.value = false;
+  router.push(`/data/query/${projectId.value}/ask`);
 }
 
 // Delete a session from history; if it is the active one, fall back.
@@ -161,7 +233,9 @@ async function load() {
   error.value = null;
   try {
     project.value = await getProject(projectId.value);
-    await ensureSession();
+    if (mode.value === 'ask') {
+      await ensureSession();
+    }
   } catch (err) {
     error.value = errMessage(err, 'Failed to load project.');
   } finally {
@@ -171,8 +245,14 @@ async function load() {
 
 watch(projectId, () => {
   project.value = null;
-  mode.value = 'ask';
   load();
+});
+
+// When switching to ask mode, ensure a chat session exists.
+watch(mode, (m) => {
+  if (m === 'ask' && project.value) {
+    ensureSession();
+  }
 });
 
 // Measure the site topbar so the page height is exactly the remaining viewport.
@@ -186,10 +266,20 @@ onMounted(() => {
   load();
   updateTopbarVar();
   window.addEventListener('resize', updateTopbarVar);
+  // Preload chat settings for the status indicators.
+  getChatSettings(projectId.value)
+    .then((s) => {
+      memEnabled.value = s.memoryEnabled;
+      promptEnabled.value = s.promptEnabled;
+      customPrompt.value = s.customPrompt;
+    })
+    .catch(() => {});
+  document.addEventListener('click', onDocClick);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateTopbarVar);
+  document.removeEventListener('click', onDocClick);
 });
 </script>
 
@@ -217,37 +307,56 @@ onBeforeUnmount(() => {
           <p class="qdetail__head-desc">{{ project.description || 'No description' }}</p>
         </div>
         <div class="qdetail__head-actions">
-          <div v-if="mode === 'ask'" class="qdetail__head-actions-ask">
+          <div v-if="mode === 'ask'" ref="moreMenuRef" class="qdetail__more">
             <button
-              class="qdetail__help"
-              aria-label="About Ask Mode"
-              @click="helpOpen = true"
+              class="qdetail__more-trigger"
+              :aria-expanded="moreOpen"
+              aria-label="More actions"
+              @click="moreOpen = !moreOpen"
             >
-              <QuestionMarkCircleIcon class="qdetail__help-icon" />
+              <EllipsisHorizontalIcon class="qdetail__more-icon" />
             </button>
-            <AppButton variant="outline" :disabled="!canNewChat" @click="newChat">
-              New Chat
-            </AppButton>
-            <AppButton variant="outline" @click="openHistory">History</AppButton>
+            <transition name="menu">
+              <div v-if="moreOpen" class="qdetail__more-dropdown">
+                <button class="qdetail__more-item" @click="moreOpen = false; helpOpen = true">
+                  <QuestionMarkCircleIcon class="qdetail__more-item-icon" />
+                  Help
+                </button>
+                <button class="qdetail__more-item" :disabled="!canNewChat" @click="moreOpen = false; newChat()">
+                  New Chat
+                </button>
+                <button class="qdetail__more-item" @click="moreOpen = false; openHistory()">
+                  History
+                </button>
+                <button class="qdetail__more-item" @click="moreOpen = false; openSettings()">
+                  Settings
+                </button>
+                <div v-if="memEnabled || promptEnabled" class="qdetail__more-status">
+                  <span v-if="memEnabled" class="meta">MEMORY ON</span>
+                  <span v-if="memEnabled && promptEnabled" class="meta"> · </span>
+                  <span v-if="promptEnabled" class="meta">PROMPT ON</span>
+                </div>
+              </div>
+            </transition>
           </div>
           <span v-if="mode === 'ask'" class="qdetail__divider" aria-hidden="true"></span>
           <div class="qdetail__tabs" role="tablist" aria-label="Query mode">
-            <button
+            <router-link
+              :to="`/data/query/${projectId}`"
               class="qdetail__tab"
               :class="{ 'qdetail__tab--active': mode === 'browse' }"
-              @click="mode = 'browse'"
             >
               <RectangleStackIcon class="qdetail__mode-icon" />
               Browse
-            </button>
-            <button
+            </router-link>
+            <router-link
+              :to="`/data/query/${projectId}/ask`"
               class="qdetail__tab"
               :class="{ 'qdetail__tab--active': mode === 'ask' }"
-              @click="mode = 'ask'"
             >
               <ChatBubbleLeftRightIcon class="qdetail__mode-icon" />
               Ask
-            </button>
+            </router-link>
           </div>
         </div>
       </div>
@@ -269,6 +378,7 @@ onBeforeUnmount(() => {
           :project-id="projectId"
           :project-name="project.name"
           :session-id="activeSessionId"
+          @session-created="onSessionCreated"
         />
       </div>
     </template>
@@ -309,8 +419,17 @@ onBeforeUnmount(() => {
               <span class="qdetail__history-session-arrow" aria-hidden="true">→</span>
             </button>
             <button
+              class="qdetail__history-session-resume"
+              aria-label="Resume chat"
+              title="Resume"
+              @click.stop="resumeChat(s)"
+            >
+              <ArrowPathIcon class="qdetail__history-session-resume-icon" />
+            </button>
+            <button
               class="qdetail__history-session-del"
               :aria-label="`Delete session ${formatDate(s.created_at)}`"
+              title="Delete"
               :disabled="deletingSession === s.id"
               @click.stop="removeSession(s)"
             >
@@ -396,6 +515,61 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </AppModal>
+
+    <AppModal v-model:open="settingsOpen" title="Chat Settings">
+      <div v-if="settingsLoading" class="qdetail__settings-loading">
+        <AppSpinner label="Loading settings…" />
+      </div>
+      <div v-else class="qdetail__settings">
+        <div class="qdetail__settings-row">
+          <div class="qdetail__settings-label">
+            <p class="label">Memory</p>
+            <p class="meta qdetail__settings-desc">
+              When enabled, the last 10 messages of this session are included
+              as context for each new question.
+            </p>
+          </div>
+          <button
+            class="qdetail__toggle"
+            :class="{ 'qdetail__toggle--on': memEnabled }"
+            :aria-pressed="memEnabled"
+            @click="memEnabled = !memEnabled"
+          >
+            <span class="qdetail__toggle-knob"></span>
+          </button>
+        </div>
+        <div class="qdetail__settings-row qdetail__settings-row--col">
+          <div class="qdetail__settings-row qdetail__settings-row--inline">
+            <div class="qdetail__settings-label">
+              <p class="label">Custom Prompt</p>
+              <p class="meta qdetail__settings-desc">
+                Appended to the system prompt for every question in this project.
+              </p>
+            </div>
+            <button
+              class="qdetail__toggle"
+              :class="{ 'qdetail__toggle--on': promptEnabled }"
+              :aria-pressed="promptEnabled"
+              @click="promptEnabled = !promptEnabled"
+            >
+              <span class="qdetail__toggle-knob"></span>
+            </button>
+          </div>
+          <textarea
+            v-model="customPrompt"
+            class="qdetail__settings-textarea"
+            rows="4"
+            :disabled="!promptEnabled"
+            placeholder="e.g. Always use Chinese for explanations. Treat blank cells as zero."
+          ></textarea>
+        </div>
+        <AppAlert v-if="settingsError" variant="error">{{ settingsError }}</AppAlert>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="settingsOpen = false">Cancel</AppButton>
+        <AppButton :loading="settingsSaving" @click="saveSettings">Save</AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
@@ -430,6 +604,7 @@ onBeforeUnmount(() => {
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: var(--tracking-widest);
+    text-decoration: none;
     color: var(--color-muted-foreground);
     cursor: pointer;
     transition:
@@ -533,36 +708,28 @@ onBeforeUnmount(() => {
     align-self: center;
   }
 
-  &__head-actions-ask {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+  &__more {
+    position: relative;
+    display: inline-flex;
   }
 
-  &__divider {
-    width: 1px;
-    align-self: stretch;
-    background: var(--color-border-light);
-    flex-shrink: 0;
-  }
-
-  &__help {
+  &__more-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 40px;
     height: 40px;
     background: none;
-    border: none;
+    border: var(--border-thin);
     cursor: pointer;
     color: var(--color-muted-foreground);
     transition:
-      color 0.25s ease,
-      background-color 0.25s ease;
+      color var(--duration-fast),
+      border-color var(--duration-fast);
 
     &:hover {
       color: var(--color-foreground);
-      background: var(--color-muted);
+      border-color: var(--color-foreground);
     }
 
     &:focus-visible {
@@ -571,9 +738,74 @@ onBeforeUnmount(() => {
     }
   }
 
-  &__help-icon {
+  &__more-icon {
     width: 1.25rem;
     height: 1.25rem;
+  }
+
+  &__more-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    min-width: 11rem;
+    padding: 0.25rem 0;
+    background: var(--color-background);
+    border: var(--border-thin);
+  }
+
+  &__more-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0.5rem 1rem;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--color-muted-foreground);
+    transition: color var(--duration-fast), background-color var(--duration-fast);
+
+    &:hover {
+      color: var(--color-foreground);
+      background: var(--color-muted);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+      outline-offset: -3px;
+    }
+  }
+
+  &__more-item-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+
+  &__more-status {
+    padding: 0.5rem 1rem;
+    border-top: var(--border-hairline);
+    font-style: italic;
+  }
+
+  &__divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--color-border-light);
+    flex-shrink: 0;
   }
 
   &__help-text {
@@ -657,10 +889,6 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: stretch;
     border-bottom: var(--border-hairline);
-
-    &:hover .qdetail__history-session-del {
-      opacity: 1;
-    }
   }
 
   &__history-session {
@@ -698,7 +926,7 @@ onBeforeUnmount(() => {
     }
   }
 
-  &__history-session-del {
+  &__history-session-resume {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -707,8 +935,7 @@ onBeforeUnmount(() => {
     border: none;
     cursor: pointer;
     color: var(--color-muted-foreground);
-    opacity: 0;
-    transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease;
 
     &:hover {
       background: var(--color-foreground);
@@ -718,7 +945,33 @@ onBeforeUnmount(() => {
     &:focus-visible {
       outline: var(--focus-outline);
       outline-offset: -3px;
-      opacity: 1;
+    }
+  }
+
+  &__history-session-resume-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  &__history-session-del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-muted-foreground);
+    transition: color 0.2s ease, background-color 0.2s ease;
+
+    &:hover {
+      background: var(--color-foreground);
+      color: var(--color-accent-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+      outline-offset: -3px;
     }
 
     &:disabled {
@@ -809,5 +1062,119 @@ onBeforeUnmount(() => {
     height: 1rem;
     flex-shrink: 0;
   }
+
+  &__settings-loading {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 0;
+  }
+
+  &__settings {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  &__settings-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+
+    &--col {
+      flex-direction: column;
+    }
+
+    &--inline {
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+  }
+
+  &__settings-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__settings-desc {
+    margin-top: 0.25rem;
+    line-height: 1.5;
+    color: var(--color-muted-foreground);
+  }
+
+  &__settings-textarea {
+    width: 100%;
+    margin-top: 0.75rem;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    border: var(--border-thin);
+    border-radius: var(--radius);
+    padding: 0.625rem 0.75rem;
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: 1.625;
+    resize: vertical;
+
+    &:focus {
+      outline: none;
+      border-width: 4px;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    background: var(--color-muted);
+    border: var(--border-thin);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background-color var(--duration-fast);
+
+    &--on {
+      background: var(--color-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+      outline-offset: 3px;
+    }
+  }
+
+  &__toggle-knob {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 18px;
+    height: 18px;
+    background: var(--color-background);
+    border-radius: var(--radius);
+    transition: transform var(--duration-fast);
+
+    .qdetail__toggle--on & {
+      transform: translateX(20px);
+      background: var(--color-accent-foreground);
+    }
+  }
+}
+
+.menu-enter-active,
+.menu-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.menu-enter-from,
+.menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>

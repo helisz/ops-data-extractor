@@ -73,7 +73,21 @@ export function initDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id);
     CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions(project_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS project_chat_settings (
+      project_id INTEGER PRIMARY KEY,
+      memory_enabled INTEGER NOT NULL DEFAULT 1,
+      prompt_enabled INTEGER NOT NULL DEFAULT 0,
+      custom_prompt TEXT NOT NULL DEFAULT '',
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
   `);
+
+  // Migration: add prompt_enabled to existing project_chat_settings tables.
+  const settingsCols = db.prepare('PRAGMA table_info(project_chat_settings)').all() as Array<{ name: string }>;
+  if (settingsCols.length > 0 && !settingsCols.some((c) => c.name === 'prompt_enabled')) {
+    db.exec('ALTER TABLE project_chat_settings ADD COLUMN prompt_enabled INTEGER NOT NULL DEFAULT 0');
+  }
 
   // Migration: add session_id to existing chat_messages tables.
   const chatCols = db.prepare('PRAGMA table_info(chat_messages)').all() as Array<{ name: string }>;
